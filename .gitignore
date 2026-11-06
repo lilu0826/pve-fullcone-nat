@@ -3,3 +3,4 @@ host-info/
 artifacts/
 __pycache__/
 *.pyc
+.kernel-cache/

@@ -40,6 +40,9 @@ acceleration=(-accel tcg -cpu max)
 if [ -r /dev/kvm ]; then
   acceleration=(-accel kvm -cpu host)
 fi
+cache="$project/.kernel-cache"
+mkdir -p "$cache"
+input_hash=$(cd "$project"; sha256sum sources.lock.json patches/* scripts/ci-network-tests.sh scripts/install-build-deps.sh | sha256sum | cut -d ' ' -f 1)
 for mode in enabled disabled; do
   if [ "$mode" = enabled ]; then
     "$kernel/scripts/config" --file "$kernel/.config" -e NF_NAT_FULLCONE_MASQUERADE
@@ -56,10 +59,23 @@ for mode in enabled disabled; do
     grep -qx '# CONFIG_NF_NAT_FULLCONE_MASQUERADE is not set' "$kernel/.config"
   fi
   cp "$kernel/.config" "$project/artifacts/test-config-$mode"
-  make -C "$kernel" -j"$(nproc)" bzImage 2>&1 | tee "$project/artifacts/compile-$mode.log"
+  if [ -f "$cache/SHA256SUMS-$mode" ] &&
+     [ "$(cat "$cache/input-$mode" 2>/dev/null)" = "$input_hash" ] &&
+     cmp -s "$kernel/.config" "$cache/config-$mode" &&
+     (cd "$cache" && sha256sum -c "SHA256SUMS-$mode"); then
+    echo "Reusing $mode smoke kernel: source/configuration/image checksums match" | tee "$project/artifacts/compile-$mode.log"
+  else
+    make -C "$kernel" -j"$(nproc)" bzImage 2>&1 | tee "$project/artifacts/compile-$mode.log"
+    cp "$kernel/arch/x86/boot/bzImage" "$cache/bzImage-$mode"
+    cp "$kernel/.config" "$cache/config-$mode"
+    printf '%s\n' "$input_hash" > "$cache/input-$mode"
+    { date -u; gcc-14 --version; printf 'input-sha256=%s\n' "$input_hash"; } > "$cache/build-$mode.txt"
+    (cd "$cache" && sha256sum "bzImage-$mode" "config-$mode" "input-$mode" "build-$mode.txt" > "SHA256SUMS-$mode")
+  fi
+  cp "$cache/bzImage-$mode" "$cache/build-$mode.txt" "$cache/SHA256SUMS-$mode" "$project/artifacts/"
   timeout 300 qemu-system-x86_64 "${acceleration[@]}" -m 2048 -smp 4 \
     -nographic -no-reboot -nic none \
-    -kernel "$kernel/arch/x86/boot/bzImage" \
+    -kernel "$cache/bzImage-$mode" \
     -drive "file=$build_root/root.img,format=raw,if=virtio,snapshot=on" \
     -append "root=/dev/vda rw console=ttyS0 init=/opt/fullcone/init.sh fullcone_mode=$mode panic=-1 oops=panic" \
     2>&1 | tee "$project/artifacts/qemu-$mode.log"

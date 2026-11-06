@@ -16,6 +16,14 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Restore smoke kernels for identical source and configuration
+        id: smoke-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .kernel-cache
+          key: smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/ci-network-tests.sh', 'scripts/install-build-deps.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/ci-network-tests.sh', 'scripts/install-build-deps.sh') }}-
       - name: Build and test in Debian trixie
         shell: bash
         run: |
@@ -25,6 +33,12 @@ jobs:
             -v "$PWD:/work" -w /work debian:trixie \
             bash -c 'bash scripts/install-build-deps.sh && bash scripts/ci-network-tests.sh /tmp/fullcone-build' \
             2>&1 | tee artifacts/ci-network.log
+      - name: Save compiled smoke kernels even when a guest test fails
+        if: always() && hashFiles('.kernel-cache/bzImage-*') != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .kernel-cache
+          key: ${{ steps.smoke-cache.outputs.cache-primary-key }}
       - name: Upload test evidence even on failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
