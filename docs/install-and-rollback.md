@@ -4,6 +4,8 @@
 
 ## 选择和核对产物
 
+已验证的交付为提交 `47b1400` 的 [安装包工件](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42227692753/artifacts/13521608636)：完整工作流通过，实际包内核已启动并通过 17 项测试。[包清单及 SHA-256](ci-package-results.json) 已记录全部 8 个包。工件保留至 2026-11-20 UTC，请下载留存。
+
 从成功运行的 `pve-fullcone-packages-<commit>` 下载工件；`network-validation-*` 是测试记录，不是安装包。阅读 `build-info.txt`、`build.log`、`qemu-package.log` 和配置文件，检查 SHA256SUMS：
 
 ```bash
@@ -63,4 +65,4 @@ proxmox-boot-tool refresh
 
 在维护窗口人工重启并核对 `uname -r`。回滚无需卸载新包；先保持两套内核和日志，避免误删当前运行模块。不要在新内核仍运行时删除它的 image/headers。
 
-当前文档是交付流程，不能替代宿主机实测；运行结果见 validation-status.md。
+本轮 CI 构建和包启动验证已通过；以上实机步骤仍需在维护窗口执行，不能用 CI 替代。证据及验收边界见 [validation-status.md](validation-status.md)。
