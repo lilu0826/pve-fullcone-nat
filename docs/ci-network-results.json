@@ -1,9 +1,9 @@
 {
-  "commit": "b823f0182ffb7a645d2a10ffb8ad5a69d288a8e2",
-  "run_url": "https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42210585402",
-  "network_job_id": 127867964389,
-  "artifact_id": 13500180394,
-  "artifact_sha256": "9827dcf7275b324a18543ab3f6694f232d6e3a2617467100085bc9a3f6c2de94",
+  "commit": "47b140071d029a86ba15d6d75a54ec77ac27a8b0",
+  "run_url": "https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42227692753",
+  "network_job_id": 127925269402,
+  "artifact_id": 13507137278,
+  "artifact_sha256": "6c247e9cdf49d5a3b9c2fc3df78ccaaa4316e9626fbe5f1d35834efa7980b19c",
   "artifact_and_smoke_image_checksums": "pass",
   "tests": {
     "enabled": [
