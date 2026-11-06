@@ -1,6 +1,22 @@
 # 验证记录
 
-日期：2026-11-06。当前代码已提交，正在执行 [Actions 42206745835](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42206745835)。本报告尚未给出安装包通过结论。
+日期：2026-11-06。[Actions 42210585402](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42210585402) 的启动测试已通过：启用配置 17 项、关闭配置 13 项。测试提交为 `b823f0182ffb7a645d2a10ffb8ad5a69d288a8e2`。完整 PVE 包仍在构建，本报告尚未给出安装包通过结论。
+
+## 已核实的启动测试结果
+
+| 检查 | 结果 |
+| --- | --- |
+| 固定 PVE 源码及完整 PVE 补丁应用 | 通过 |
+| 三段式补丁哈希、零 fuzz 应用、结果哈希 | 通过 |
+| 自有适配补丁 checkpatch | 通过，无输出 |
+| Full Cone 启用配置 | 17/17，通过 |
+| Full Cone 关闭配置 | 13/13，通过；第三方新入站应被阻止 |
+| lockdep 配置和 guest 完成标记 | 已核对，两种配置均启动并完成 |
+| 本轮内核日志 | 未发现检查范围内的 WARNING、BUG、锁依赖错误或 panic |
+| 下载产物及两套测试镜像校验和 | 本地复核通过 |
+| 完整 PVE Debian 包及包内核复测 | 构建中 |
+
+逐项结果见 [ci-network-results.json](ci-network-results.json)。网络测试工件为 [network-validation-b823f01](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42210585402/artifacts/13500180394)，ZIP SHA-256 为 `9827dcf7275b324a18543ab3f6694f232d6e3a2617467100085bc9a3f6c2de94`。启用镜像复用了上一轮按源码、补丁、构建脚本、配置及镜像校验和检查的缓存；关闭镜像本轮编译。每次均实际启动并重跑测试，测试内核不作为 PVE 安装包使用。
 
 ## 源码和实现检查
 
@@ -28,7 +44,7 @@
 
 精简测试内核与完整安装包使用同一套固定 PVE 源码和补丁。精简配置分别编译 Full Cone 开/关并启用 lockdep；完整包保留 PVE 配置。测试 VM 使用路由器、两个内网设备和三个外网设备的独立 network namespace。内网先访问 A/B 验证 EIM，再由从未联系过的 C 发起新入站验证 EIF，避免把地址受限过滤误判为 Full Cone。没有连接或修改 PVE 节点。
 
-测试覆盖 UDP EIM/EIF、fully-random、TCP 实际 connect/accept 和 32768 字节双向校验、TCP 关闭、FORWARD DROP、显式 SNAT/DNAT/REDIRECT、本机 socket 优先、低源端口、IPv6、协议隔离、ICMP、普通 SNAT 公网端点冲突、conntrack 超时/删除/flush、并发映射与端口唯一性、端口耗尽、WAN down/up 和地址变化、conntrack zone 隔离。脚本存在不代表这些测试已经通过；最终结果须由对应运行日志填写。
+已通过的启用测试覆盖 UDP EIM/EIF、fully-random、TCP 实际 connect/accept 和 32768 字节双向校验、TCP 关闭、FORWARD DROP、显式 SNAT/DNAT/REDIRECT、本机 socket 优先、低源端口、IPv6、协议隔离、ICMP、普通 SNAT 公网端点冲突、conntrack 超时/删除/flush、并发映射与端口唯一性、端口耗尽、WAN down/up 和地址变化、conntrack zone 隔离。并发用例为两个内部设备、48 个源端点、96 次探测和 32 个控制线程；这是短时并发测试，不是长期压力测试。
 
 以下项目仍需要实际环境，不能用 CI 替代：
 

@@ -1,0 +1,136 @@
+{
+  "commit": "b823f0182ffb7a645d2a10ffb8ad5a69d288a8e2",
+  "run_url": "https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42210585402",
+  "network_job_id": 127867964389,
+  "artifact_id": 13500180394,
+  "artifact_sha256": "9827dcf7275b324a18543ab3f6694f232d6e3a2617467100085bc9a3f6c2de94",
+  "artifact_and_smoke_image_checksums": "pass",
+  "tests": {
+    "enabled": [
+      {
+        "test": "udp",
+        "status": "PASS"
+      },
+      {
+        "test": "udp-fully-random",
+        "status": "PASS"
+      },
+      {
+        "test": "tcp-handshake-and-data",
+        "status": "PASS"
+      },
+      {
+        "test": "forward-drop",
+        "status": "PASS"
+      },
+      {
+        "test": "explicit-snat-isolation",
+        "status": "PASS"
+      },
+      {
+        "test": "explicit-dnat-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "low-source-port",
+        "status": "PASS"
+      },
+      {
+        "test": "local-service-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "ipv6-unchanged",
+        "status": "PASS"
+      },
+      {
+        "test": "redirect-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "protocol-isolation-and-icmp",
+        "status": "PASS"
+      },
+      {
+        "test": "ordinary-snat-collision",
+        "status": "PASS"
+      },
+      {
+        "test": "expiry-and-explicit-delete",
+        "status": "PASS"
+      },
+      {
+        "test": "concurrent-eim-and-uniqueness",
+        "status": "PASS"
+      },
+      {
+        "test": "port-exhaustion",
+        "status": "PASS"
+      },
+      {
+        "test": "flush-and-wan-down",
+        "status": "PASS"
+      },
+      {
+        "test": "conntrack-zone-isolation",
+        "status": "PASS"
+      }
+    ],
+    "disabled": [
+      {
+        "test": "udp",
+        "status": "PASS"
+      },
+      {
+        "test": "udp-fully-random",
+        "status": "PASS"
+      },
+      {
+        "test": "tcp-handshake-and-data",
+        "status": "PASS"
+      },
+      {
+        "test": "forward-drop",
+        "status": "PASS"
+      },
+      {
+        "test": "explicit-snat-isolation",
+        "status": "PASS"
+      },
+      {
+        "test": "explicit-dnat-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "low-source-port",
+        "status": "PASS"
+      },
+      {
+        "test": "local-service-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "ipv6-unchanged",
+        "status": "PASS"
+      },
+      {
+        "test": "redirect-precedence",
+        "status": "PASS"
+      },
+      {
+        "test": "protocol-isolation-and-icmp",
+        "status": "PASS"
+      },
+      {
+        "test": "ordinary-snat-collision",
+        "status": "PASS"
+      },
+      {
+        "test": "expiry-and-explicit-delete",
+        "status": "PASS"
+      }
+    ]
+  },
+  "package_build_report": "validation-status.md",
+  "hardware_and_public_network_acceptance": "not_run"
+}
