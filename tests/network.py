@@ -70,7 +70,7 @@ def setup():
     release = run('uname', '-r').stdout.strip()
     if not Path('/run/fullcone-test-vm').exists() or not ('fullcone-test' in release or release == '7.0.14-23-fullcone-pve'):
         raise SystemExit('Run only in the provided disposable QEMU test VM')
-    for ns in ('r', 'h1', 'h2', 'a', 'b'):
+    for ns in ('r', 'h1', 'h2', 'a', 'b', 'c'):
         run('ip', 'netns', 'add', ns)
         run('ip', 'link', 'set', 'lo', 'up', ns=ns)
     link('r', 'lan1', 'h1', 'eth0', '10.0.1.1/24', '10.0.1.2/24')
@@ -78,7 +78,7 @@ def setup():
     # The bridge belongs to the VM, not the NAT router namespace.
     run('ip', 'link', 'add', 'outside', 'type', 'bridge')
     run('ip', 'link', 'set', 'outside', 'up')
-    for ns, addr in [('r', '198.18.0.1'), ('a', '198.18.0.2'), ('b', '198.18.0.3')]:
+    for ns, addr in [('r', '198.18.0.1'), ('a', '198.18.0.2'), ('b', '198.18.0.3'), ('c', '198.18.0.4')]:
         run('ip', 'link', 'add', ns+'-wire', 'type', 'veth', 'peer', 'name', ns+'-end')
         run('ip', 'link', 'set', ns+'-wire', 'master', 'outside')
         run('ip', 'link', 'set', ns+'-wire', 'up')
@@ -89,14 +89,14 @@ def setup():
     for ns, gateway in [('h1', '10.0.1.1'), ('h2', '10.0.2.1')]:
         run('ip', 'route', 'add', 'default', 'via', gateway, ns=ns)
     run('sysctl', '-qw', 'net.ipv4.ip_forward=1', ns='r')
-    for ns in ('r', 'h1', 'h2', 'a', 'b'):
+    for ns in ('r', 'h1', 'h2', 'a', 'b', 'c'):
         run('sysctl', '-qw', 'net.ipv4.conf.all.rp_filter=0', ns=ns)
         run('sysctl', '-qw', 'net.ipv4.conf.default.rp_filter=0', ns=ns)
-    for ns, addr in [('h1', '10.0.1.2'), ('h2', '10.0.2.2'), ('a', '198.18.0.2'), ('b', '198.18.0.3'), ('r', '198.18.0.1')]:
+    for ns, addr in [('h1', '10.0.1.2'), ('h2', '10.0.2.2'), ('a', '198.18.0.2'), ('b', '198.18.0.3'), ('c', '198.18.0.4'), ('r', '198.18.0.1')]:
         process = subprocess.Popen(['ip', 'netns', 'exec', ns, 'python3', str(HERE/'peer.py'), str(CONTROL/ns), addr])
         PROCESSES.append(process)
     end = time.monotonic() + 10
-    while not all((CONTROL / ns).exists() for ns in ('r', 'h1', 'h2', 'a', 'b')):
+    while not all((CONTROL / ns).exists() for ns in ('r', 'h1', 'h2', 'a', 'b', 'c')):
         if time.monotonic() > end:
             raise TimeoutError('Peer startup timed out')
         time.sleep(.05)
@@ -113,13 +113,15 @@ def udp_case(random=False):
     first = rpc('h1', 'udp_probe', port=port, destination=['198.18.0.2', 9000])['observed']
     second = rpc('h1', 'udp_probe', port=port, destination=['198.18.0.3', 9001])['observed']
     assert first[0] == second[0] == '198.18.0.1', (first, second)
-    rpc('b', 'udp_open', port=port+1000)
+    # C was never contacted by the internal endpoint: distinguish EIF from
+    # address-dependent filtering, which would already allow A and B.
+    rpc('c', 'udp_open', port=port+1000)
     if ENABLED:
         assert first == second, (first, second)
-        reply = rpc('b', 'udp_probe', port=port+1000, destination=first)
-        assert reply['responder'] == first and reply['observed'] == ['198.18.0.3', port+1000], reply
+        reply = rpc('c', 'udp_probe', port=port+1000, destination=first)
+        assert reply['responder'] == first and reply['observed'] == ['198.18.0.4', port+1000], reply
     else:
-        blocked('b', 'udp_probe', port=port+1000, destination=first)
+        blocked('c', 'udp_probe', port=port+1000, destination=first)
 
 
 def tcp_case():
@@ -130,15 +132,15 @@ def tcp_case():
     rpc('h1', 'tcp_listen', port=5200)
     if ENABLED:
         assert first['observed'] == second['observed'], (first, second)
-        inbound = rpc('b', 'tcp_probe', port=6200, destination=first['observed'])
-        assert inbound['observed'] == ['198.18.0.3', 6200], inbound
+        inbound = rpc('c', 'tcp_probe', port=6200, destination=first['observed'])
+        assert inbound['observed'] == ['198.18.0.4', 6200], inbound
         assert inbound['bytes_each_direction'] == 32768
         state = run('conntrack', '-L', '-p', 'tcp', ns='r').stdout
         assert 'ESTABLISHED' in state and '[ASSURED]' in state, state
     else:
-        blocked('b', 'tcp_probe', port=6200, destination=first['observed'])
+        blocked('c', 'tcp_probe', port=6200, destination=first['observed'])
     rpc('h1', 'tcp_close_all')
-    rpc('b', 'tcp_close_all')
+    rpc('c', 'tcp_close_all')
     end = time.monotonic() + 2
     while time.monotonic() < end:
         state = run('conntrack', '-L', '-p', 'tcp', ns='r').stdout
@@ -380,7 +382,7 @@ def main():
             process.terminate()
         for process in PROCESSES:
             process.wait(timeout=5)
-        for ns in ('r', 'h1', 'h2', 'a', 'b'):
+        for ns in ('r', 'h1', 'h2', 'a', 'b', 'c'):
             run('ip', 'netns', 'delete', ns, check=False)
 
 
