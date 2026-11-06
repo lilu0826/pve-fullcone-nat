@@ -96,7 +96,7 @@ index 6cdc994..620790f 100644
  	bool
  
 diff --git a/net/netfilter/nf_nat_core.c b/net/netfilter/nf_nat_core.c
-index 2caf116..27ee733 100644
+index 2caf116..3a0ae69 100644
 --- a/net/netfilter/nf_nat_core.c
 +++ b/net/netfilter/nf_nat_core.c
 @@ -13,6 +13,7 @@
@@ -380,7 +380,34 @@ index 2caf116..27ee733 100644
  	/* 2) Select the least-used IP/proto combination in the given range */
  	*tuple = *orig_tuple;
  	find_best_ips_proto(zone, tuple, &nat_range, ct, maniptype);
-@@ -1047,6 +1149,7 @@ again:
+@@ -955,10 +1057,24 @@ nf_nat_setup_info(struct nf_conn *ct,
+ 	struct net *net = nf_ct_net(ct);
+ 	struct nf_conntrack_tuple curr_tuple, new_tuple;
+ 	bool fullcone = maniptype == NF_NAT_MANIP_SRC &&
+-			(range->flags & NF_NAT_RANGE_FULLCONE);
++			(range->flags & NF_NAT_RANGE_FULLCONE) &&
++			ct->fullcone_ifindex && nf_ct_l3num(ct) == NFPROTO_IPV4 &&
++			(nf_ct_protonum(ct) == IPPROTO_TCP ||
++			 nf_ct_protonum(ct) == IPPROTO_UDP) &&
++			nf_ct_zone(ct)->dir == NF_CT_DEFAULT_ZONE_DIR;
+ 	spinlock_t *fullcone_lock = NULL, *manip_src_lock = NULL;
+ 	unsigned int manip_src_hash = 0, retries = 0, ret;
+-	struct nf_nat_range2 retry_range;
++	struct nf_nat_range2 retry_range, scoped_range;
++
++	/* Legacy xtables callers do not all reject unknown flag bits. A raw
++	 * flag is insufficient: only the IPv4 MASQUERADE helper sets the
++	 * private interface field on this unconfirmed conntrack.
++	 */
++	if (!fullcone && (range->flags & NF_NAT_RANGE_FULLCONE)) {
++		scoped_range = *range;
++		scoped_range.flags &= ~NF_NAT_RANGE_FULLCONE;
++		range = &scoped_range;
++	}
+ 
+ 	/* Can't setup nat info for confirmed ct. */
+ 	if (nf_ct_is_confirmed(ct))
+@@ -1047,6 +1163,7 @@ again:
  		unsigned int srchash;
  		spinlock_t *lock;
  
@@ -388,7 +415,7 @@ index 2caf116..27ee733 100644
  		hlist_add_head_rcu(&ct->nat_by_manip_src,
  				   &nf_nat_by_manip_src[manip_src_hash]);
  		spin_unlock_bh(manip_src_lock);
-@@ -1185,6 +1288,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
+@@ -1185,6 +1302,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
  					goto do_nat;
  			}
  null_bind:
@@ -402,7 +429,7 @@ index 2caf116..27ee733 100644
  			ret = nf_nat_alloc_null_binding(ct, state->hook);
  			if (ret != NF_ACCEPT)
  				return ret;
-@@ -1192,7 +1302,8 @@ null_bind:
+@@ -1192,7 +1316,8 @@ null_bind:
  			pr_debug("Already setup manip %s for ct %p (status bits 0x%lx)\n",
  				 maniptype == NF_NAT_MANIP_SRC ? "SRC" : "DST",
  				 ct, ct->status);
@@ -412,7 +439,7 @@ index 2caf116..27ee733 100644
  					       state->out))
  				goto oif_changed;
  		}
-@@ -1201,7 +1312,8 @@ null_bind:
+@@ -1201,7 +1326,8 @@ null_bind:
  		/* ESTABLISHED */
  		WARN_ON(ctinfo != IP_CT_ESTABLISHED &&
  			ctinfo != IP_CT_ESTABLISHED_REPLY);
