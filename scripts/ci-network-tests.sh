@@ -72,7 +72,8 @@ for mode in enabled disabled; do
     { date -u; gcc-14 --version; printf 'input-sha256=%s\n' "$input_hash"; } > "$cache/build-$mode.txt"
     (cd "$cache" && sha256sum "bzImage-$mode" "config-$mode" "input-$mode" "build-$mode.txt" > "SHA256SUMS-$mode")
   fi
-  cp "$cache/bzImage-$mode" "$cache/build-$mode.txt" "$cache/SHA256SUMS-$mode" "$project/artifacts/"
+  cp "$cache/bzImage-$mode" "$cache/config-$mode" "$cache/input-$mode" \
+    "$cache/build-$mode.txt" "$cache/SHA256SUMS-$mode" "$project/artifacts/"
   timeout 300 qemu-system-x86_64 "${acceleration[@]}" -m 2048 -smp 4 \
     -nographic -no-reboot -nic none \
     -kernel "$cache/bzImage-$mode" \
