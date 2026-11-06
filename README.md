@@ -2,7 +2,7 @@
 
 目标：按 [task.md](task.md)，仅修改 PVE `7.0.14-23-pve` 内核，使 IPv4 TCP/UDP MASQUERADE 支持 EIM/EIF，保留现有用户态规则。
 
-**当前状态：精简配置内核已通过启用 17 项、关闭 13 项启动测试；完整 PVE Debian 包正在构建。** 实际状态以 [本轮 Actions](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42210585402) 和 [验证记录](docs/validation-status.md) 为准；PVE 实机和独立公网环境尚未验收。
+**当前状态：精简配置内核已通过启用 17 项、关闭 13 项启动测试。完整 PVE 包编译完成后因 changelog 邮箱被 lintian 拒绝，已修正并重新构建，尚无通过全部验证的安装包。** 实际状态以 [本轮 Actions](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42226105395) 和 [验证记录](docs/validation-status.md) 为准；PVE 实机和独立公网环境尚未验收。
 
 已锁定准确的 PVE 打包提交、内核子模块提交、ZFS 子模块提交和参考补丁提交；已核对用户提供的宿主机版本、MODVERSIONS 和模块 vermagic。参考实现不能直接作为本项目的自动入站处理实现：它没有隔离普通 SNAT 映射，而且 fully-random 路径不保证 EIM。
 
