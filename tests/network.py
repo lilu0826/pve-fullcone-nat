@@ -332,7 +332,7 @@ def ipv6_case():
         run('ip','-6','addr','add',addr,'dev',dev,'nodad',ns=ns)
     run('sysctl','-qw','net.ipv6.conf.all.forwarding=1',ns='r')
     run('ip','-6','route','add','default','via','fd00:1::1',ns='h1')
-    run('nft','-f','-',ns='r',stdin='table ip6 nat { chain post { type nat hook postrouting priority srcnat; oifname "wan" masquerade; } }\n')
+    run('nft','-f','-',ns='r',stdin='table ip6 nat { chain post { type nat hook postrouting priority srcnat; oifname "wan" masquerade; }; }\n')
     rpc('h1','udp_open',port=5900,address='fd00:1::2')
     rpc('a','udp_open',port=9900,address='2001:db8:1::2')
     rpc('b','udp_open',port=6900,address='2001:db8:1::3')
