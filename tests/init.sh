@@ -21,7 +21,7 @@ modinfo -F vermagic nf_nat 2>/dev/null || true
 python3 /opt/fullcone/network.py "$mode"
 status=$?
 echo '=== FINAL KERNEL LOG ==='
-dmesg
+dmesg --color=never
 if [ "$status" -eq 0 ]; then
   echo "FULLCONE_TEST_PASS $mode"
 else
