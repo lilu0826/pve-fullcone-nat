@@ -19,6 +19,7 @@
 
 1. 保留 SONiC translated-source 三元组索引和 987 的桶锁、同源 setup 锁及分配后原子复查。
 2. `fullcone_masq` 资格位位于 `nf_conn` 的 memset 初始化区域，避免 slab 复用时继承资格。只有本项目的 MASQUERADE 发布映射时设置。
+   出接口索引也保存在初始化区域，并在索引发布前写入；查找不读取其他未确认 conntrack 的扩展区，因为该扩展区随后可能被 `krealloc()` 移动。持有哈希桶锁只保护 conntrack 本体，不自动保护扩展区。
 3. EIF 仅使用确认、未 dying、未超时、同协议/地址族/netns/zone、同 WAN 接口的合格映射。所有 conntrack tuple 的复制都在对应的删除锁下完成，不把查找到的裸指针传出临界区。
 4. EIM 在 random/fully-random 端口选择前执行。随机标志影响首次分配，不能使后续连接换映射。同端点随后提供不兼容端口范围时丢弃该新建映射，避免悄悄拆分 EIM。
 5. 修正 987 三元组复查中的提前返回：找到同内部端点不能掩盖同桶中其他冲突绑定。

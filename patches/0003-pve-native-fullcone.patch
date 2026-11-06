@@ -6,10 +6,10 @@ Add private eligibility, random-independent reuse, and final-null-binding
 inbound lookup. Explicit NAT rules and local sockets take precedence.
 
 diff --git a/include/net/netfilter/nf_conntrack.h b/include/net/netfilter/nf_conntrack.h
-index 7fbf7ea..adb9569 100644
+index 7fbf7ea..56e6d30 100644
 --- a/include/net/netfilter/nf_conntrack.h
 +++ b/include/net/netfilter/nf_conntrack.h
-@@ -109,6 +109,12 @@ struct nf_conn {
+@@ -109,6 +109,13 @@ struct nf_conn {
  	/* all members below initialized via memset */
  	struct { } __nfct_init_offset;
  
@@ -17,6 +17,7 @@ index 7fbf7ea..adb9569 100644
 +	/* Zeroed on slab reuse. Only native IPv4 MASQUERADE sets these. */
 +	bool fullcone_masq;
 +	bool fullcone_inbound;
++	int fullcone_ifindex;
 +#endif
 +
  	/* If we were expected by an expectation, this will be it */
@@ -95,7 +96,7 @@ index 6cdc994..620790f 100644
  	bool
  
 diff --git a/net/netfilter/nf_nat_core.c b/net/netfilter/nf_nat_core.c
-index 2caf116..4a0b49d 100644
+index 2caf116..2773e4b 100644
 --- a/net/netfilter/nf_nat_core.c
 +++ b/net/netfilter/nf_nat_core.c
 @@ -13,6 +13,7 @@
@@ -144,7 +145,7 @@ index 2caf116..4a0b49d 100644
  		taken = true;
  	}
  	return taken;
-@@ -577,45 +582,160 @@ find_appropriate_src(struct net *net,
+@@ -577,45 +582,155 @@ find_appropriate_src(struct net *net,
  	return 0;
  }
  
@@ -213,11 +214,9 @@ index 2caf116..4a0b49d 100644
 +
 +	found = false;
 +	hlist_for_each_entry(ct, &nf_nat_by_manip_src[h], nat_by_manip_src) {
-+		const struct nf_conn_nat *nat = nfct_nat(ct);
-+
 +		if (!ct->fullcone_masq || !nf_ct_is_confirmed(ct) ||
 +		    nf_ct_is_dying(ct) || nf_ct_is_expired(ct) ||
-+		    !nat || nat->masq_index != in->ifindex ||
++		    ct->fullcone_ifindex != in->ifindex ||
 +		    !same_reply_dst(ct, tuple) || !net_eq(net, nf_ct_net(ct)) ||
 +		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY))
 +			continue;
@@ -287,17 +286,14 @@ index 2caf116..4a0b49d 100644
 +{
 +	struct net *net = nf_ct_net(newct);
 +	const struct nf_conntrack_zone *zone = nf_ct_zone(newct);
-+	const struct nf_conn_nat *nat = nfct_nat(newct);
 +	unsigned int h = hash_by_src(net, zone, orig);
 +	const struct nf_conn *ct;
 +	int found = 0;
 +
 +	spin_lock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
 +	hlist_for_each_entry(ct, &nf_nat_bysource[h], nat_bysource) {
-+		const struct nf_conn_nat *other_nat = nfct_nat(ct);
-+
 +		if (!ct->fullcone_masq || nf_ct_is_dying(ct) ||
-+		    !nat || !other_nat || nat->masq_index != other_nat->masq_index ||
++		    newct->fullcone_ifindex != ct->fullcone_ifindex ||
 +		    !same_src(ct, orig) || !net_eq(net, nf_ct_net(ct)) ||
 +		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_ORIGINAL))
 +			continue;
@@ -332,7 +328,7 @@ index 2caf116..4a0b49d 100644
  
  /* For [FUTURE] fragmentation handling, we want the least-used
   * src-ip/dst-ip/proto triple.  Fairness doesn't come into it.  Thus
-@@ -852,6 +972,14 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+@@ -852,6 +967,14 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  
  	zone = nf_ct_zone(ct);
  
@@ -347,7 +343,7 @@ index 2caf116..4a0b49d 100644
  	/* 1) If this srcip/proto/src-proto-part is currently mapped,
  	 * and that same mapping gives a unique tuple within the given
  	 * range, use that.
-@@ -861,7 +989,7 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+@@ -861,7 +984,7 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  	 * manips not an issue.
  	 */
  	if (maniptype == NF_NAT_MANIP_SRC &&
@@ -356,7 +352,7 @@ index 2caf116..4a0b49d 100644
  		/* try the original tuple first */
  		if (nf_in_range(orig_tuple, &nat_range)) {
  			if (!nf_nat_used_tuple_new(orig_tuple, ct)) {
-@@ -876,27 +1004,6 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+@@ -876,27 +999,6 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  		}
  	}
  
@@ -384,7 +380,7 @@ index 2caf116..4a0b49d 100644
  	/* 2) Select the least-used IP/proto combination in the given range */
  	*tuple = *orig_tuple;
  	find_best_ips_proto(zone, tuple, &nat_range, ct, maniptype);
-@@ -1047,6 +1154,7 @@ again:
+@@ -1047,6 +1149,7 @@ again:
  		unsigned int srchash;
  		spinlock_t *lock;
  
@@ -392,7 +388,7 @@ index 2caf116..4a0b49d 100644
  		hlist_add_head_rcu(&ct->nat_by_manip_src,
  				   &nf_nat_by_manip_src[manip_src_hash]);
  		spin_unlock_bh(manip_src_lock);
-@@ -1185,6 +1293,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
+@@ -1185,6 +1288,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
  					goto do_nat;
  			}
  null_bind:
@@ -407,7 +403,7 @@ index 2caf116..4a0b49d 100644
  			if (ret != NF_ACCEPT)
  				return ret;
 diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade.c
-index a5a23c0..622f284 100644
+index a5a23c0..76af950 100644
 --- a/net/netfilter/nf_nat_masquerade.c
 +++ b/net/netfilter/nf_nat_masquerade.c
 @@ -8,6 +8,7 @@
@@ -418,7 +414,7 @@ index a5a23c0..622f284 100644
  
  struct masq_dev_work {
  	struct work_struct work;
-@@ -70,6 +71,20 @@ nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
+@@ -70,6 +71,21 @@ nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
  	newrange.min_proto   = range->min_proto;
  	newrange.max_proto   = range->max_proto;
  
@@ -428,6 +424,7 @@ index a5a23c0..622f284 100644
 +	    nf_ct_zone(ct)->dir == NF_CT_DEFAULT_ZONE_DIR) {
 +		if (!nat)
 +			return NF_DROP;
++		ct->fullcone_ifindex = out->ifindex;
 +		newrange.flags |= NF_NAT_RANGE_FULLCONE;
 +		if (!(newrange.flags & NF_NAT_RANGE_PROTO_SPECIFIED)) {
 +			newrange.flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
@@ -439,7 +436,7 @@ index a5a23c0..622f284 100644
  	/* Hand modified range to generic setup. */
  	return nf_nat_setup_info(ct, &newrange, NF_NAT_MANIP_SRC);
  }
-@@ -174,7 +189,8 @@ static int inet_cmp(struct nf_conn *ct, void *ptr)
+@@ -174,7 +190,8 @@ static int inet_cmp(struct nf_conn *ct, void *ptr)
  	if (!device_cmp(ct, ptr))
  		return 0;
  
