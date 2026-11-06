@@ -17,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build and test in Debian trixie
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
           docker run --rm --privileged \
             -v "$PWD:/work" -w /work debian:trixie \
@@ -42,7 +44,9 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/.ghcup /usr/share/swift
           df -h
       - name: Build in Debian trixie
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
           docker run --rm --privileged \
             -v "$PWD:/work" -w /work debian:trixie \

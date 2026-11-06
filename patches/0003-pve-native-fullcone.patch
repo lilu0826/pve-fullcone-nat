@@ -24,7 +24,7 @@ index 7fbf7ea..56e6d30 100644
  	struct nf_conn *master;
  
 diff --git a/include/net/netfilter/nf_nat.h b/include/net/netfilter/nf_nat.h
-index 9877f06..67ad7b6 100644
+index 9877f06..9fbc9cb 100644
 --- a/include/net/netfilter/nf_nat.h
 +++ b/include/net/netfilter/nf_nat.h
 @@ -10,6 +10,13 @@
@@ -46,7 +46,7 @@ index 9877f06..67ad7b6 100644
  {
  #if IS_ENABLED(CONFIG_NF_NAT_MASQUERADE)
 -	return nat && nat->masq_index && hooknum == NF_INET_POST_ROUTING &&
-+	return !ct->fullcone_inbound && nat && nat->masq_index &&
++	return nat && nat->masq_index &&
 +	       hooknum == NF_INET_POST_ROUTING &&
  	       CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL &&
  	       nat->masq_index != out->ifindex;
@@ -96,7 +96,7 @@ index 6cdc994..620790f 100644
  	bool
  
 diff --git a/net/netfilter/nf_nat_core.c b/net/netfilter/nf_nat_core.c
-index 2caf116..2773e4b 100644
+index 2caf116..27ee733 100644
 --- a/net/netfilter/nf_nat_core.c
 +++ b/net/netfilter/nf_nat_core.c
 @@ -13,6 +13,7 @@
@@ -402,6 +402,26 @@ index 2caf116..2773e4b 100644
  			ret = nf_nat_alloc_null_binding(ct, state->hook);
  			if (ret != NF_ACCEPT)
  				return ret;
+@@ -1192,7 +1302,8 @@ null_bind:
+ 			pr_debug("Already setup manip %s for ct %p (status bits 0x%lx)\n",
+ 				 maniptype == NF_NAT_MANIP_SRC ? "SRC" : "DST",
+ 				 ct, ct->status);
+-			if (nf_nat_oif_changed(state->hook, ctinfo, nat,
++			if (!ct->fullcone_inbound &&
++			    nf_nat_oif_changed(state->hook, ctinfo, nat,
+ 					       state->out))
+ 				goto oif_changed;
+ 		}
+@@ -1201,7 +1312,8 @@ null_bind:
+ 		/* ESTABLISHED */
+ 		WARN_ON(ctinfo != IP_CT_ESTABLISHED &&
+ 			ctinfo != IP_CT_ESTABLISHED_REPLY);
+-		if (nf_nat_oif_changed(state->hook, ctinfo, nat, state->out))
++		if (!ct->fullcone_inbound &&
++		    nf_nat_oif_changed(state->hook, ctinfo, nat, state->out))
+ 			goto oif_changed;
+ 	}
+ do_nat:
 diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade.c
 index a5a23c0..76af950 100644
 --- a/net/netfilter/nf_nat_masquerade.c
