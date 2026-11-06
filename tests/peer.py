@@ -143,7 +143,12 @@ def main():
                 result = {'ok': False, 'error': type(exc).__name__, 'detail': str(exc)}
             self.wfile.write(json.dumps(result).encode() + b'\n')
 
-    with socketserver.ThreadingUnixStreamServer(args.control, Handler) as server:
+    class ControlServer(socketserver.ThreadingUnixStreamServer):
+        # The test launches 32 concurrent controllers; the default backlog of
+        # five rejects local control connections before any NAT packet is sent.
+        request_queue_size = 128
+
+    with ControlServer(args.control, Handler) as server:
         server.daemon_threads = True
         server.serve_forever()
 
