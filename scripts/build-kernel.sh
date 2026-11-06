@@ -12,6 +12,10 @@ kernel="$pve/proxmox-kernel-7.0.14/ubuntu-kernel"
 preserve_outputs() {
   local status=$?
   trap - EXIT
+  if [ "$status" -eq 0 ]; then
+    printf 'build-script-exit=0\n' > "$project/artifacts/build-status.txt" || exit 1
+    exit 0
+  fi
   set +e
   if [ -d "$pve" ]; then
     find "$pve" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.buildinfo' -o -name '*.changes' \) \
