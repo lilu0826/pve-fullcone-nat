@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "target_release": "7.0.14-23-pve",
+  "status": "research_blocked_before_porting",
+  "pve": {
+    "repository": "https://git.proxmox.com/git/pve-kernel.git",
+    "commit": "c1ca7892dbc5087d01c12ad260bbe03e77c1a296",
+    "cache_directory": "pve-kernel",
+    "files": [
+      {
+        "path": "Makefile",
+        "git_blob": "b5d0b0585a2636728af106a6d978a45be6b47847",
+        "sha256": "f3cf57b75ca1d9b6da0f5fdd3492ff17db5453ac827defe6c7043ddf645e7d97"
+      },
+      {
+        "path": "debian/changelog",
+        "git_blob": "63d3ad6cb542ed6a94654f64398690824b05f553",
+        "sha256": "a498086b03797f5ea654d620497268544ac555b1d6e00d7ee2cc1aa74134b8ae"
+      },
+      {
+        "path": ".gitmodules",
+        "git_blob": "25e44b6799d9c952a22d4f9314584080931eb794",
+        "sha256": "6720d47d8a2986eb8abe3bcc3f8a66aed89c1f573cd07955b129e06dcb19754a"
+      },
+      {
+        "path": "debian/rules",
+        "git_blob": "71f98045cfb51d473bc7d5cb10cfcf87e5715e8e",
+        "sha256": "1673423b012e77fa69ffa3af261c858b8941bdbe30b0d31d6195a4eec8504902"
+      },
+      {
+        "path": "debian/control.in",
+        "git_blob": "b7048b62e949d189a6ccfa5661e7bffbc199d3ae",
+        "sha256": "e5c7e4b35ae114868b0b1680f9d14894f9c127cbb664bdcfd9fb99c337eab65d"
+      },
+      {
+        "path": "debian/rules.d/config-common.opts",
+        "git_blob": "64505b4466544dc5fc7303511896e4c764eaee6c",
+        "sha256": "8b3df785810eff37b9a3493b77c56eb42ec0f84af4d5dd09f0496dfaaea024d5"
+      },
+      {
+        "path": "debian/rules.d/config-amd64.opts",
+        "git_blob": "3d5f8eca570dd062a28b6f46e0697099c38d8f6f",
+        "sha256": "989918bc7e33b5bb267c43fdbb9f9f8f37f3cb9093ad8ded157aaaf616eee029"
+      }
+    ],
+    "submodules": {
+      "submodules/ubuntu-kernel": "874594fa24531e1ea15fa72709d20047e4a8d77c",
+      "submodules/zfsonlinux": "dcd0e4345f4253bb9e44cc1ab54c6f73196421aa"
+    }
+  },
+  "kernel": {
+    "repository": "https://git.proxmox.com/git/mirror_ubuntu-kernels.git",
+    "commit": "874594fa24531e1ea15fa72709d20047e4a8d77c",
+    "cache_directory": "linux-target",
+    "files": [
+      {
+        "path": "net/netfilter/nf_nat_core.c",
+        "git_blob": "b09583a48e3bbf8337e9d0a8158bd4867d3556b7",
+        "sha256": "5ed9daebbdf9300f905425f6d83bedebf1c38c21ab35d4483b3eb5b55ebce307"
+      },
+      {
+        "path": "net/netfilter/nf_nat_proto.c",
+        "git_blob": "97c0f841fc9648be397169949fe411f7b34dda1b",
+        "sha256": "57d052520d34ab71e785bc889ef218d370a9b8b93038343240c204f716bd45dd"
+      },
+      {
+        "path": "net/netfilter/nf_nat_masquerade.c",
+        "git_blob": "a5a23c03fda95ded43477a57c697271025cca1d2",
+        "sha256": "4f3852ee6091bf4103f99227e8e7ccf38a0017c3767c82e3e56867d27605005c"
+      },
+      {
+        "path": "include/net/netfilter/nf_conntrack.h",
+        "git_blob": "bc42dd0e10e65922f1293343774ac2d71ca17956",
+        "sha256": "f192dd6b5a1b711d9d5ff38c05ed044dff5f7c12f0ca549dcc2ad769d3a52234"
+      },
+      {
+        "path": "include/net/netfilter/nf_nat.h",
+        "git_blob": "9877f064548a2350143430f2919da57a77acb2ff",
+        "sha256": "f3ce8f86eb5df480a90ce22ee2e4573154a6d9abf50f1f399945b584e1eab3ad"
+      },
+      {
+        "path": "include/uapi/linux/netfilter/nf_nat.h",
+        "git_blob": "a64586e77b2401418c733c005e2ec281c9d4a486",
+        "sha256": "bbe0932d10f8eb9e24ee2db849a7d0f5e23fab3f2e242a4a1fbf2f1e99263eb6"
+      },
+      {
+        "path": "net/netfilter/Kconfig",
+        "git_blob": "6cdc994fdc8a2e6c1fd91697f0762903ebf5ec4f",
+        "sha256": "8c5c60a7e026165659025ba1c9fb131701700151f1bd9773ba60728153e3c7b2"
+      }
+    ]
+  },
+  "openwrt_reference": {
+    "repository": "https://github.com/mufeng05/openwrt-sonic-fullcone.git",
+    "commit": "f87ac2a95b77270af9180a16590cc548617336a1",
+    "cache_directory": "openwrt-sonic-fullcone",
+    "files": [
+      {
+        "path": "kernel/984-add-sonic-fullcone-support.patch",
+        "git_blob": "37b84b98266ff08ee1e704a758267eacb67e80f1",
+        "sha256": "641fc0334be28e9488e2b436ec0a36e52d58e62d02cb1ca4bad8959de6e41fed"
+      },
+      {
+        "path": "kernel/987-sonic-fullcone-fix-races-and-drops.patch",
+        "git_blob": "8440b61c01cf709bee4d25f27a45301af6801d62",
+        "sha256": "8c802ce0fb4ad01a8eb2e6e29513319aa99ead9f93dd827b156273c428668959"
+      }
+    ]
+  },
+  "sonic_reference": {
+    "repository": "https://github.com/sonic-net/sonic-linux-kernel.git",
+    "commit": "fbe99cecd8035812cba1b67d3c941aafeae8d879",
+    "path": "patches-sonic/Support-for-fullcone-nat.patch",
+    "cache_file": "sonic-original.patch",
+    "sha256": "591db09b0317d12caa9e737313d42fb67637c020fa3ced83a9bead468c014e9e"
+  }
+}

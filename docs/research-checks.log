@@ -1,0 +1,62 @@
+Scoped patch applicability probe; NOT a build or runtime test.
+Kernel: 874594fa24531e1ea15fa72709d20047e4a8d77c
+PVE: c1ca7892dbc5087d01c12ad260bbe03e77c1a296
+PVE scoped patch: 0155-net-openvswitch-conntrack-avoid-modifying-shared-unc.patch
+exit=0
+
+
+984: GNU patch --batch --dry-run --fuzz=0 -p1
+exit=0
+checking file include/net/netfilter/nf_conntrack.h
+Hunk #1 succeeded at 102 (offset -1 lines).
+checking file include/uapi/linux/netfilter/nf_nat.h
+checking file net/netfilter/nf_nat_core.c
+Hunk #1 succeeded at 36 (offset 3 lines).
+Hunk #2 succeeded at 185 (offset -1 lines).
+Hunk #3 succeeded at 537 (offset 190 lines).
+Hunk #4 succeeded at 648 (offset 190 lines).
+Hunk #5 succeeded at 676 (offset 189 lines).
+Hunk #6 succeeded at 703 (offset 188 lines).
+Hunk #7 succeeded at 755 (offset 191 lines).
+Hunk #8 succeeded at 776 (offset 191 lines).
+Hunk #9 succeeded at 792 (offset 191 lines).
+Hunk #10 succeeded at 808 (offset 191 lines).
+Hunk #11 succeeded at 918 (offset 191 lines).
+Hunk #12 succeeded at 942 (offset 191 lines).
+Hunk #13 succeeded at 1129 (offset 191 lines).
+Hunk #14 succeeded at 1481 (offset 200 lines).
+Hunk #15 succeeded at 1513 (offset 201 lines).
+Hunk #16 succeeded at 1532 (offset 202 lines).
+
+
+987 not applied: prerequisite 984 has not been applied.
+
+Additional disposable-tree compatibility check:
+984-add-sonic-fullcone-support.patch applied ONLY to disposable scope probe
+exit=0
+patching file include/net/netfilter/nf_conntrack.h
+Hunk #1 succeeded at 102 (offset -1 lines).
+patching file include/uapi/linux/netfilter/nf_nat.h
+patching file net/netfilter/nf_nat_core.c
+Hunk #1 succeeded at 36 (offset 3 lines).
+Hunk #2 succeeded at 185 (offset -1 lines).
+Hunk #3 succeeded at 537 (offset 190 lines).
+Hunk #4 succeeded at 648 (offset 190 lines).
+Hunk #5 succeeded at 676 (offset 189 lines).
+Hunk #6 succeeded at 703 (offset 188 lines).
+Hunk #7 succeeded at 755 (offset 191 lines).
+Hunk #8 succeeded at 776 (offset 191 lines).
+Hunk #9 succeeded at 792 (offset 191 lines).
+Hunk #10 succeeded at 808 (offset 191 lines).
+Hunk #11 succeeded at 918 (offset 191 lines).
+Hunk #12 succeeded at 942 (offset 191 lines).
+Hunk #13 succeeded at 1129 (offset 191 lines).
+Hunk #14 succeeded at 1481 (offset 200 lines).
+Hunk #15 succeeded at 1513 (offset 201 lines).
+Hunk #16 succeeded at 1532 (offset 202 lines).
+
+
+987-sonic-fullcone-fix-races-and-drops.patch dry run
+exit=0
+checking file net/netfilter/nf_nat_core.c
+Hunk #14 succeeded at 1593 (offset -14 lines).

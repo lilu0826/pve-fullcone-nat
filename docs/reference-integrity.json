@@ -1,0 +1,15 @@
+{
+  "reference_integrity": "pass",
+  "checks": [
+    "pve: commit, 7 locked Git blobs and their working files verified",
+    "kernel: commit, 7 locked Git blobs and their working files verified",
+    "openwrt_reference: commit, 2 locked Git blobs and their working files verified",
+    "submodules/ubuntu-kernel: gitlink verified (not a complete submodule audit)",
+    "submodules/zfsonlinux: gitlink verified (not a complete submodule audit)",
+    "SONiC cached patch SHA-256 verified"
+  ],
+  "project_kernel_patch": "not_created",
+  "reference_patch_probe": "see docs/research-checks.log",
+  "kernel_build": "not_run",
+  "fullcone_functional_tests": "not_run"
+}
