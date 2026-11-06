@@ -21,9 +21,9 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .kernel-cache
-          key: smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/ci-network-tests.sh', 'scripts/install-build-deps.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/*.py', 'scripts/*.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/ci-network-tests.sh', 'scripts/install-build-deps.sh') }}-
+            smoke-${{ runner.arch }}-${{ hashFiles('sources.lock.json', 'patches/**', 'scripts/*.py', 'scripts/*.sh') }}-
       - name: Build and test in Debian trixie
         shell: bash
         run: |

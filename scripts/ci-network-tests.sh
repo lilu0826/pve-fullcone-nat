@@ -42,7 +42,7 @@ if [ -r /dev/kvm ]; then
 fi
 cache="$project/.kernel-cache"
 mkdir -p "$cache"
-input_hash=$(cd "$project"; sha256sum sources.lock.json patches/* scripts/ci-network-tests.sh scripts/install-build-deps.sh | sha256sum | cut -d ' ' -f 1)
+input_hash=$(cd "$project"; sha256sum sources.lock.json patches/* scripts/*.py scripts/*.sh | sha256sum | cut -d ' ' -f 1)
 for mode in enabled disabled; do
   if [ "$mode" = enabled ]; then
     "$kernel/scripts/config" --file "$kernel/.config" -e NF_NAT_FULLCONE_MASQUERADE
