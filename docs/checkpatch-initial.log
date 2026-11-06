@@ -1,0 +1,5 @@
+C:\Users\josh\Desktop\pve-fullcone-nat\patches\0003-pve-native-fullcone.patch:224: CHECK: multiple assignments should be avoided
+C:\Users\josh\Desktop\pve-fullcone-nat\patches\0003-pve-native-fullcone.patch:225: CHECK: multiple assignments should be avoided
+total: 0 errors, 0 warnings, 2 checks, 376 lines checked
+No typos will be found - file '/c/Users/josh/Desktop/pve-fullcone-nat/C:/Users/josh/Desktop/pve-fullcone-nat/.research/spelling.txt': No such file or directory
+No structs that should be const will be found - file '/c/Users/josh/Desktop/pve-fullcone-nat/C:/Users/josh/Desktop/pve-fullcone-nat/.research/const_structs.checkpatch': No such file or directory

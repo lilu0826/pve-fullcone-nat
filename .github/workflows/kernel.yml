@@ -1,0 +1,57 @@
+name: PVE Fullcone kernel
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pve-fullcone-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  network-tests:
+    name: Boot patched kernel and test TCP/UDP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and test in Debian trixie
+        run: |
+          mkdir -p artifacts
+          docker run --rm --privileged \
+            -v "$PWD:/work" -w /work debian:trixie \
+            bash -c 'bash scripts/install-build-deps.sh && bash scripts/ci-network-tests.sh /tmp/fullcone-build' \
+            2>&1 | tee artifacts/ci-network.log
+      - name: Upload test evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: network-validation-${{ github.sha }}
+          path: artifacts/
+          retention-days: 14
+  packages:
+    name: Build complete PVE Debian packages
+    needs: network-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Reclaim optional SDK space on the disposable runner
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h
+      - name: Build in Debian trixie
+        run: |
+          mkdir -p artifacts
+          docker run --rm --privileged \
+            -v "$PWD:/work" -w /work debian:trixie \
+            bash -c 'bash scripts/install-build-deps.sh && bash scripts/build-kernel.sh /tmp/fullcone-build' \
+            2>&1 | tee artifacts/ci-package.log
+      - name: Upload packages and complete logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pve-fullcone-packages-${{ github.sha }}
+          path: artifacts/
+          retention-days: 14

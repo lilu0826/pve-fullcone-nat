@@ -1,0 +1,427 @@
+From: PVE Fullcone contributors
+Subject: [PATCH 3/3] netfilter: scope fullcone to native IPv4 MASQUERADE
+
+Keep the SONiC conntrack-backed translated-source index and the 987 locks.
+Add private eligibility, random-independent reuse, and final-null-binding
+inbound lookup. Explicit NAT rules and local sockets take precedence.
+
+diff --git a/include/net/netfilter/nf_conntrack.h b/include/net/netfilter/nf_conntrack.h
+index 7fbf7ea..adb9569 100644
+--- a/include/net/netfilter/nf_conntrack.h
++++ b/include/net/netfilter/nf_conntrack.h
+@@ -109,6 +109,12 @@ struct nf_conn {
+ 	/* all members below initialized via memset */
+ 	struct { } __nfct_init_offset;
+ 
++#if IS_ENABLED(CONFIG_NF_NAT)
++	/* Zeroed on slab reuse. Only native IPv4 MASQUERADE sets these. */
++	bool fullcone_masq;
++	bool fullcone_inbound;
++#endif
++
+ 	/* If we were expected by an expectation, this will be it */
+ 	struct nf_conn *master;
+ 
+diff --git a/include/net/netfilter/nf_nat.h b/include/net/netfilter/nf_nat.h
+index 9877f06..67ad7b6 100644
+--- a/include/net/netfilter/nf_nat.h
++++ b/include/net/netfilter/nf_nat.h
+@@ -10,6 +10,13 @@
+ #include <net/netfilter/nf_conntrack_tuple.h>
+ #include <uapi/linux/netfilter/nf_nat.h>
+ 
++/* Private to the IPv4 MASQUERADE implementation; never in UAPI masks. */
++#if IS_ENABLED(CONFIG_NF_NAT_FULLCONE_MASQUERADE)
++#define NF_NAT_RANGE_FULLCONE (1U << 10)
++#else
++#define NF_NAT_RANGE_FULLCONE 0U
++#endif
++
+ enum nf_nat_manip_type {
+ 	NF_NAT_MANIP_SRC,
+ 	NF_NAT_MANIP_DST
+@@ -60,7 +67,8 @@ static inline bool nf_nat_oif_changed(unsigned int hooknum,
+ 				      const struct net_device *out)
+ {
+ #if IS_ENABLED(CONFIG_NF_NAT_MASQUERADE)
+-	return nat && nat->masq_index && hooknum == NF_INET_POST_ROUTING &&
++	return !ct->fullcone_inbound && nat && nat->masq_index &&
++	       hooknum == NF_INET_POST_ROUTING &&
+ 	       CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL &&
+ 	       nat->masq_index != out->ifindex;
+ #else
+diff --git a/include/uapi/linux/netfilter/nf_nat.h b/include/uapi/linux/netfilter/nf_nat.h
+index 8987554..a64586e 100644
+--- a/include/uapi/linux/netfilter/nf_nat.h
++++ b/include/uapi/linux/netfilter/nf_nat.h
+@@ -12,7 +12,6 @@
+ #define NF_NAT_RANGE_PROTO_RANDOM_FULLY		(1 << 4)
+ #define NF_NAT_RANGE_PROTO_OFFSET		(1 << 5)
+ #define NF_NAT_RANGE_NETMAP			(1 << 6)
+-#define NF_NAT_RANGE_FULLCONE			(1 << 10)
+ 
+ #define NF_NAT_RANGE_PROTO_RANDOM_ALL		\
+ 	(NF_NAT_RANGE_PROTO_RANDOM | NF_NAT_RANGE_PROTO_RANDOM_FULLY)
+@@ -21,7 +20,7 @@
+ 	(NF_NAT_RANGE_MAP_IPS | NF_NAT_RANGE_PROTO_SPECIFIED |	\
+ 	 NF_NAT_RANGE_PROTO_RANDOM | NF_NAT_RANGE_PERSISTENT |	\
+ 	 NF_NAT_RANGE_PROTO_RANDOM_FULLY | NF_NAT_RANGE_PROTO_OFFSET | \
+-	 NF_NAT_RANGE_NETMAP | NF_NAT_RANGE_FULLCONE)
++	 NF_NAT_RANGE_NETMAP)
+ 
+ struct nf_nat_ipv4_range {
+ 	unsigned int			flags;
+diff --git a/net/netfilter/Kconfig b/net/netfilter/Kconfig
+index 6cdc994..620790f 100644
+--- a/net/netfilter/Kconfig
++++ b/net/netfilter/Kconfig
+@@ -455,6 +455,18 @@ config NF_NAT_REDIRECT
+ config NF_NAT_MASQUERADE
+ 	bool
+ 
++config NF_NAT_FULLCONE_MASQUERADE
++	bool "Full cone IPv4 TCP/UDP MASQUERADE"
++	depends on NF_NAT && NF_NAT_MASQUERADE && INET
++	select NF_SOCKET_IPV4
++	default y
++	help
++	  Reuse IPv4 TCP/UDP MASQUERADE endpoint mappings and allow new
++	  sources to reach confirmed mappings without an extra NAT rule.
++	  Explicit destination NAT, local sockets and FORWARD policy retain
++	  precedence. Mapping lifetime follows the outbound conntracks.
++	  This changes the conntrack module ABI; rebuild the complete kernel.
++
+ config NF_NAT_OVS
+ 	bool
+ 
+diff --git a/net/netfilter/nf_nat_core.c b/net/netfilter/nf_nat_core.c
+index 2caf116..dffacf3 100644
+--- a/net/netfilter/nf_nat_core.c
++++ b/net/netfilter/nf_nat_core.c
+@@ -13,6 +13,7 @@
+ #include <linux/skbuff.h>
+ #include <linux/gfp.h>
+ #include <net/xfrm.h>
++#include <net/route.h>
+ #include <linux/siphash.h>
+ #include <linux/rtnetlink.h>
+ 
+@@ -24,6 +25,8 @@
+ #include <net/netfilter/nf_nat.h>
+ #include <net/netfilter/nf_nat_helper.h>
+ #include <uapi/linux/netfilter/nf_nat.h>
++#include <linux/inetdevice.h>
++#include <net/netfilter/nf_socket.h>
+ 
+ #include "nf_internals.h"
+ 
+@@ -198,7 +201,8 @@ same_reply_dst(const struct nf_conn *ct,
+ 	const struct nf_conntrack_tuple *t;
+ 
+ 	t = &ct->tuplehash[IP_CT_DIR_REPLY].tuple;
+-	return (t->dst.protonum == tuple->dst.protonum &&
++	return (t->src.l3num == tuple->src.l3num &&
++		t->dst.protonum == tuple->dst.protonum &&
+ 		nf_inet_addr_cmp(&t->dst.u3, &tuple->dst.u3) &&
+ 		t->dst.u.all == tuple->dst.u.all);
+ }
+@@ -516,7 +520,8 @@ same_src(const struct nf_conn *ct,
+ 	const struct nf_conntrack_tuple *t;
+ 
+ 	t = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
+-	return (t->dst.protonum == tuple->dst.protonum &&
++	return (t->src.l3num == tuple->src.l3num &&
++		t->dst.protonum == tuple->dst.protonum &&
+ 		nf_inet_addr_cmp(&t->src.u3, &tuple->src.u3) &&
+ 		t->src.u.all == tuple->src.u.all);
+ }
+@@ -544,7 +549,7 @@ nf_nat_3_tuple_taken(const struct nf_conntrack_tuple *tuple,
+ 		    !nf_ct_zone_equal(other, zone, IP_CT_DIR_ORIGINAL))
+ 			continue;
+ 		if (same_src(other, &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple))
+-			return false;
++			continue;
+ 		taken = true;
+ 	}
+ 	return taken;
+@@ -577,43 +582,136 @@ find_appropriate_src(struct net *net,
+ 	return 0;
+ }
+ 
+-/* Only called for DST manip */
+-static int
+-find_appropriate_dst(struct net *net,
+-		     const struct nf_conntrack_zone *zone,
+-		     const struct nf_conntrack_tuple *tuple,
+-		     struct nf_conntrack_tuple *result)
++/* Copy under the same bucket lock used for deletion: conntracks can be
++ * recycled under RCU. No conntrack pointer escapes this critical section.
++ * A later ordinary SNAT may legally share a translated endpoint. In that
++ * case keep ordinary NAT semantics and decline automatic DNAT altogether.
++ */
++static bool
++nf_nat_fullcone_lookup(struct nf_conn *newct, const struct net_device *in,
++		       struct nf_nat_range2 *range)
+ {
+-	struct nf_conntrack_tuple reply;
+-	unsigned int h;
++	const struct nf_conntrack_tuple *tuple;
++	const struct nf_conntrack_zone *zone = nf_ct_zone(newct);
++	struct nf_conntrack_tuple reply, inside = {};
++	struct net *net = nf_ct_net(newct);
+ 	const struct nf_conn *ct;
+-	int found = 0;
++	unsigned int h;
++	bool found = false, conflict = false;
+ 
++	tuple = &newct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
+ 	nf_ct_invert_tuple(&reply, tuple);
+ 	h = hash_by_src(net, zone, &reply);
+-
+-	/* Conntracks are SLAB_TYPESAFE_BY_RCU: without the bucket lock an
+-	 * entry could be freed and reused while its tuple is copied, and
+-	 * the packet sent to some other host.
+-	 */
+ 	spin_lock_bh(&nf_nat_manip_src_locks[h % CONNTRACK_LOCKS]);
+ 	hlist_for_each_entry(ct, &nf_nat_by_manip_src[h], nat_by_manip_src) {
+-		if (same_reply_dst(ct, tuple) &&
+-		    net_eq(net, nf_ct_net(ct)) &&
+-		    nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY)) {
+-			/* Copy destination part from original tuple. */
+-			nf_ct_invert_tuple(result,
+-					   &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple);
+-			result->src = tuple->src;
+-			/* nf_ct_invert_tuple() set dir to REPLY, but result
+-			 * is an original-direction tuple.
+-			 */
+-			result->dst.dir = IP_CT_DIR_ORIGINAL;
+-			found = 1;
+-			break;
++		if (!same_reply_dst(ct, tuple) || !net_eq(net, nf_ct_net(ct)) ||
++		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY))
++			continue;
++		if (!found) {
++			inside = ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
++			found = true;
++		} else if (!same_src(ct, &inside)) {
++			conflict = true;
+ 		}
+ 	}
++	if (!found || conflict)
++		goto out;
++
++	found = false;
++	hlist_for_each_entry(ct, &nf_nat_by_manip_src[h], nat_by_manip_src) {
++		const struct nf_conn_nat *nat = nfct_nat(ct);
++
++		if (!ct->fullcone_masq || !nf_ct_is_confirmed(ct) ||
++		    nf_ct_is_dying(ct) || nf_ct_is_expired(ct) ||
++		    !nat || nat->masq_index != in->ifindex ||
++		    !same_reply_dst(ct, tuple) || !net_eq(net, nf_ct_net(ct)) ||
++		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY))
++			continue;
++		range->flags = NF_NAT_RANGE_MAP_IPS | NF_NAT_RANGE_PROTO_SPECIFIED;
++		range->min_addr = range->max_addr = inside.src.u3;
++		range->min_proto = range->max_proto = inside.src.u;
++		found = true;
++		break;
++	}
++out:
+ 	spin_unlock_bh(&nf_nat_manip_src_locks[h % CONNTRACK_LOCKS]);
++	return found && !conflict;
++}
++
++/* Called only at the final null-binding point, after explicit NAT rules. */
++static unsigned int
++nf_nat_fullcone_inbound(struct nf_conn *ct, struct sk_buff *skb,
++			const struct nf_hook_state *state)
++{
++	struct nf_nat_range2 range = {};
++	struct nf_conn_nat *nat;
++	struct sock *sk;
++	unsigned int ret;
++
++	if (!IS_ENABLED(CONFIG_NF_NAT_FULLCONE_MASQUERADE) ||
++	    state->pf != NFPROTO_IPV4 || state->hook != NF_INET_PRE_ROUTING ||
++	    !state->in || nf_ct_is_confirmed(ct) ||
++	    nf_ct_zone(ct)->dir != NF_CT_DEFAULT_ZONE_DIR ||
++	    (nf_ct_protonum(ct) != IPPROTO_TCP && nf_ct_protonum(ct) != IPPROTO_UDP))
++		return NF_ACCEPT;
++	/* Do not redirect ports currently owned by the router, including
++	 * high ports. New local listeners take precedence on subsequent flows.
++	 */
++	if (inet_addr_type_dev_table(state->net, state->in, ip_hdr(skb)->daddr) != RTN_LOCAL)
++		return NF_ACCEPT;
++	sk = nf_sk_lookup_slow_v4(state->net, skb, state->in);
++	if (sk) {
++		sock_gen_put(sk);
++		return NF_ACCEPT;
++	}
++	if (!nf_nat_fullcone_lookup(ct, state->in, &range))
++		return NF_ACCEPT;
++	nat = nf_ct_nat_ext_add(ct);
++	if (!nat)
++		return NF_DROP;
++	ret = nf_nat_setup_info(ct, &range, NF_NAT_MANIP_DST);
++	if (ret == NF_ACCEPT) {
++		ct->fullcone_inbound = true;
++		nat->masq_index = state->in->ifindex;
++	}
++	return ret;
++}
++
++/* The endpoint setup lock serializes new fullcone flows. The bysource
++ * bucket lock additionally protects against concurrent object destruction.
++ * Reuse precedes random port selection, including fully-random rules.
++ */
++static int
++nf_nat_fullcone_reuse(struct nf_conn *newct,
++		      const struct nf_conntrack_tuple *orig,
++		      struct nf_conntrack_tuple *result,
++		      const struct nf_nat_range2 *range)
++{
++	struct net *net = nf_ct_net(newct);
++	const struct nf_conntrack_zone *zone = nf_ct_zone(newct);
++	const struct nf_conn_nat *nat = nfct_nat(newct);
++	unsigned int h = hash_by_src(net, zone, orig);
++	const struct nf_conn *ct;
++	int found = 0;
++
++	spin_lock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
++	hlist_for_each_entry(ct, &nf_nat_bysource[h], nat_bysource) {
++		const struct nf_conn_nat *other_nat = nfct_nat(ct);
++
++		if (!ct->fullcone_masq || nf_ct_is_dying(ct) ||
++		    !nat || !other_nat || nat->masq_index != other_nat->masq_index ||
++		    !same_src(ct, orig) || !net_eq(net, nf_ct_net(ct)) ||
++		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_ORIGINAL))
++			continue;
++		nf_ct_invert_tuple(result, &ct->tuplehash[IP_CT_DIR_REPLY].tuple);
++		result->dst = orig->dst;
++		if (!nf_inet_addr_cmp(&result->src.u3, &range->min_addr))
++			continue;
++		/* An incompatible later port range must not silently split EIM. */
++		found = nf_in_range(result, range) ? 1 : -1;
++		break;
++	}
++	spin_unlock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
+ 	return found;
+ }
+ 
+@@ -852,6 +950,14 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+ 
+ 	zone = nf_ct_zone(ct);
+ 
++	if (maniptype == NF_NAT_MANIP_SRC &&
++	    (nat_range.flags & NF_NAT_RANGE_FULLCONE)) {
++		int reused = nf_nat_fullcone_reuse(ct, orig_tuple, tuple, range);
++
++		if (reused)
++			return reused > 0 && !nf_nat_used_tuple(tuple, ct);
++	}
++
+ 	/* 1) If this srcip/proto/src-proto-part is currently mapped,
+ 	 * and that same mapping gives a unique tuple within the given
+ 	 * range, use that.
+@@ -861,7 +967,7 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+ 	 * manips not an issue.
+ 	 */
+ 	if (maniptype == NF_NAT_MANIP_SRC &&
+-	    !(nat_range.flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
++	    !(nat_range.flags & (NF_NAT_RANGE_PROTO_RANDOM_ALL | NF_NAT_RANGE_FULLCONE))) {
+ 		/* try the original tuple first */
+ 		if (nf_in_range(orig_tuple, &nat_range)) {
+ 			if (!nf_nat_used_tuple_new(orig_tuple, ct)) {
+@@ -876,27 +982,6 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+ 		}
+ 	}
+ 
+-	if (maniptype == NF_NAT_MANIP_DST) {
+-		if (nat_range.flags & NF_NAT_RANGE_FULLCONE) {
+-			/* Destination IP range does not apply when fullcone flag is set. */
+-			nat_range.min_addr = nat_range.max_addr = orig_tuple->dst.u3;
+-			nat_range.min_proto.all = nat_range.max_proto.all = 0;
+-
+-			/* If this dstip/proto/dst-proto-part is mapped currently
+-			 * as a translated source for a given tuple, use that
+-			 */
+-			if (find_appropriate_dst(net, zone,
+-						 orig_tuple, tuple)) {
+-				if (!nf_nat_used_tuple(tuple, ct))
+-					goto out;
+-			} else {
+-				/* If not mapped, proceed with the original tuple */
+-				*tuple = *orig_tuple;
+-				goto out;
+-			}
+-		}
+-	}
+-
+ 	/* 2) Select the least-used IP/proto combination in the given range */
+ 	*tuple = *orig_tuple;
+ 	find_best_ips_proto(zone, tuple, &nat_range, ct, maniptype);
+@@ -1047,6 +1132,7 @@ again:
+ 		unsigned int srchash;
+ 		spinlock_t *lock;
+ 
++		ct->fullcone_masq = fullcone;
+ 		hlist_add_head_rcu(&ct->nat_by_manip_src,
+ 				   &nf_nat_by_manip_src[manip_src_hash]);
+ 		spin_unlock_bh(manip_src_lock);
+@@ -1185,6 +1271,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
+ 					goto do_nat;
+ 			}
+ null_bind:
++			if (ctinfo == IP_CT_NEW) {
++				ret = nf_nat_fullcone_inbound(ct, skb, state);
++				if (ret != NF_ACCEPT)
++					return ret;
++				if (nf_nat_initialized(ct, maniptype))
++					goto do_nat;
++			}
+ 			ret = nf_nat_alloc_null_binding(ct, state->hook);
+ 			if (ret != NF_ACCEPT)
+ 				return ret;
+diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade.c
+index a5a23c0..622f284 100644
+--- a/net/netfilter/nf_nat_masquerade.c
++++ b/net/netfilter/nf_nat_masquerade.c
+@@ -8,6 +8,7 @@
+ #include <linux/netfilter_ipv6.h>
+ 
+ #include <net/netfilter/nf_nat_masquerade.h>
++#include <net/netfilter/nf_conntrack_zones.h>
+ 
+ struct masq_dev_work {
+ 	struct work_struct work;
+@@ -70,6 +71,20 @@ nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
+ 	newrange.min_proto   = range->min_proto;
+ 	newrange.max_proto   = range->max_proto;
+ 
++	if (IS_ENABLED(CONFIG_NF_NAT_FULLCONE_MASQUERADE) &&
++	    (nf_ct_protonum(ct) == IPPROTO_TCP ||
++	     nf_ct_protonum(ct) == IPPROTO_UDP) &&
++	    nf_ct_zone(ct)->dir == NF_CT_DEFAULT_ZONE_DIR) {
++		if (!nat)
++			return NF_DROP;
++		newrange.flags |= NF_NAT_RANGE_FULLCONE;
++		if (!(newrange.flags & NF_NAT_RANGE_PROTO_SPECIFIED)) {
++			newrange.flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++			newrange.min_proto.all = htons(1024);
++			newrange.max_proto.all = htons(65535);
++		}
++	}
++
+ 	/* Hand modified range to generic setup. */
+ 	return nf_nat_setup_info(ct, &newrange, NF_NAT_MANIP_SRC);
+ }
+@@ -174,7 +189,8 @@ static int inet_cmp(struct nf_conn *ct, void *ptr)
+ 	if (!device_cmp(ct, ptr))
+ 		return 0;
+ 
+-	tuple = &ct->tuplehash[IP_CT_DIR_REPLY].tuple;
++	tuple = &ct->tuplehash[ct->fullcone_inbound ?
++			      IP_CT_DIR_ORIGINAL : IP_CT_DIR_REPLY].tuple;
+ 
+ 	return nf_inet_addr_cmp(&w->addr, &tuple->dst.u3);
+ }
