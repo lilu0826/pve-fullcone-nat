@@ -95,7 +95,7 @@ index 6cdc994..620790f 100644
  	bool
  
 diff --git a/net/netfilter/nf_nat_core.c b/net/netfilter/nf_nat_core.c
-index 2caf116..dffacf3 100644
+index 2caf116..4a0b49d 100644
 --- a/net/netfilter/nf_nat_core.c
 +++ b/net/netfilter/nf_nat_core.c
 @@ -13,6 +13,7 @@
@@ -144,7 +144,7 @@ index 2caf116..dffacf3 100644
  		taken = true;
  	}
  	return taken;
-@@ -577,43 +582,136 @@ find_appropriate_src(struct net *net,
+@@ -577,45 +582,160 @@ find_appropriate_src(struct net *net,
  	return 0;
  }
  
@@ -154,6 +154,7 @@ index 2caf116..dffacf3 100644
 -		     const struct nf_conntrack_zone *zone,
 -		     const struct nf_conntrack_tuple *tuple,
 -		     struct nf_conntrack_tuple *result)
++#if IS_ENABLED(CONFIG_NF_NAT_FULLCONE_MASQUERADE)
 +/* Copy under the same bucket lock used for deletion: conntracks can be
 + * recycled under RCU. No conntrack pointer escapes this critical section.
 + * A later ordinary SNAT may legally share a translated endpoint. In that
@@ -221,8 +222,10 @@ index 2caf116..dffacf3 100644
 +		    !nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY))
 +			continue;
 +		range->flags = NF_NAT_RANGE_MAP_IPS | NF_NAT_RANGE_PROTO_SPECIFIED;
-+		range->min_addr = range->max_addr = inside.src.u3;
-+		range->min_proto = range->max_proto = inside.src.u;
++		range->min_addr = inside.src.u3;
++		range->max_addr = inside.src.u3;
++		range->min_proto = inside.src.u;
++		range->max_proto = inside.src.u;
 +		found = true;
 +		break;
 +	}
@@ -264,6 +267,8 @@ index 2caf116..dffacf3 100644
 +		return NF_DROP;
 +	ret = nf_nat_setup_info(ct, &range, NF_NAT_MANIP_DST);
 +	if (ret == NF_ACCEPT) {
++		/* NAT setup may grow the extension area (e.g. sequence adjust). */
++		nat = nfct_nat(ct);
 +		ct->fullcone_inbound = true;
 +		nat->masq_index = state->in->ifindex;
 +	}
@@ -307,8 +312,27 @@ index 2caf116..dffacf3 100644
 +	spin_unlock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
  	return found;
  }
++#else
++static unsigned int
++nf_nat_fullcone_inbound(struct nf_conn *ct, struct sk_buff *skb,
++			const struct nf_hook_state *state)
++{
++	return NF_ACCEPT;
++}
++
++static int
++nf_nat_fullcone_reuse(struct nf_conn *newct,
++		      const struct nf_conntrack_tuple *orig,
++		      struct nf_conntrack_tuple *result,
++		      const struct nf_nat_range2 *range)
++{
++	return 0;
++}
++#endif
  
-@@ -852,6 +950,14 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+ /* For [FUTURE] fragmentation handling, we want the least-used
+  * src-ip/dst-ip/proto triple.  Fairness doesn't come into it.  Thus
+@@ -852,6 +972,14 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  
  	zone = nf_ct_zone(ct);
  
@@ -323,7 +347,7 @@ index 2caf116..dffacf3 100644
  	/* 1) If this srcip/proto/src-proto-part is currently mapped,
  	 * and that same mapping gives a unique tuple within the given
  	 * range, use that.
-@@ -861,7 +967,7 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+@@ -861,7 +989,7 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  	 * manips not an issue.
  	 */
  	if (maniptype == NF_NAT_MANIP_SRC &&
@@ -332,7 +356,7 @@ index 2caf116..dffacf3 100644
  		/* try the original tuple first */
  		if (nf_in_range(orig_tuple, &nat_range)) {
  			if (!nf_nat_used_tuple_new(orig_tuple, ct)) {
-@@ -876,27 +982,6 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
+@@ -876,27 +1004,6 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
  		}
  	}
  
@@ -360,7 +384,7 @@ index 2caf116..dffacf3 100644
  	/* 2) Select the least-used IP/proto combination in the given range */
  	*tuple = *orig_tuple;
  	find_best_ips_proto(zone, tuple, &nat_range, ct, maniptype);
-@@ -1047,6 +1132,7 @@ again:
+@@ -1047,6 +1154,7 @@ again:
  		unsigned int srchash;
  		spinlock_t *lock;
  
@@ -368,7 +392,7 @@ index 2caf116..dffacf3 100644
  		hlist_add_head_rcu(&ct->nat_by_manip_src,
  				   &nf_nat_by_manip_src[manip_src_hash]);
  		spin_unlock_bh(manip_src_lock);
-@@ -1185,6 +1271,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
+@@ -1185,6 +1293,13 @@ nf_nat_inet_fn(void *priv, struct sk_buff *skb,
  					goto do_nat;
  			}
  null_bind:

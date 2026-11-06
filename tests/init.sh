@@ -23,5 +23,5 @@ else
   echo "FULLCONE_TEST_FAIL $mode status=$status"
 fi
 sync
-poweroff -f
+/bin/busybox poweroff -f
 

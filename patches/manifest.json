@@ -21,14 +21,14 @@
     },
     {
       "file": "0003-pve-native-fullcone.patch",
-      "sha256": "08cec7e548f92a0dbfa1b94e4a96fabc3e11aa6df37722d4d1b29593d5f33019"
+      "sha256": "6ca7a7c0ad4282e3e5d58b485044a66dbfd3a43bf912dfcee867dc9b8f6dae67"
     }
   ],
   "result_files": {
     "include/net/netfilter/nf_conntrack.h": "2b3895176cbe4ea5f60c53fafc159118c472e69351e70cc3211c2516f68bd34a",
     "include/net/netfilter/nf_nat.h": "2259575b0cba1fcd48c191919f0009e68864e96d6d30488a6ea6293ce9d881f5",
     "include/uapi/linux/netfilter/nf_nat.h": "bbe0932d10f8eb9e24ee2db849a7d0f5e23fab3f2e242a4a1fbf2f1e99263eb6",
-    "net/netfilter/nf_nat_core.c": "06b06c1d187763a967800a0ef75c84fc27bf26124f6356c51da2346b4d8a4956",
+    "net/netfilter/nf_nat_core.c": "f20616c6e89ae352417ed11611730d9d5da432f7cf1cd99ba6ecd4d43672f2de",
     "net/netfilter/nf_nat_masquerade.c": "5ab17bc6294d42ddaa642f1f2ab8ce57e002701da1392cb153785ad6cb78b78d",
     "net/netfilter/Kconfig": "d9abe011b43364573d2f4a9f33a7b64fa551a9c47bc62bc41fcdecf0814afc93"
   }

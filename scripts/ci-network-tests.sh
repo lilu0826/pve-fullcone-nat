@@ -6,6 +6,9 @@ mkdir -p "$project/artifacts" "$build_root"
 export CC=gcc-14 HOSTCC=gcc-14
 python3 "$project/scripts/prepare-source.py" "$build_root/pve"
 kernel="$build_root/pve/proxmox-kernel-7.0.14/ubuntu-kernel"
+perl "$kernel/scripts/checkpatch.pl" --no-tree --no-signoff --terse \
+  "$project/patches/0003-pve-native-fullcone.patch" \
+  2>&1 | tee "$project/artifacts/checkpatch.log"
 cp "$kernel/.config" "$project/artifacts/pve-config-before-smoke"
 # The smoke image uses the exact PVE-patched source, with a smaller VM config.
 # The separate package job retains and builds the full PVE configuration.
