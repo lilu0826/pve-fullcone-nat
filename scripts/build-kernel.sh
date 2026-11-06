@@ -10,7 +10,7 @@ pve="$build_root/pve"
 kernel="$pve/proxmox-kernel-7.0.14/ubuntu-kernel"
 {
   date -u '+build-start=%Y-%m-%dT%H:%M:%SZ'
-  printf 'project-commit=%s\n' "$(git -C "$project" rev-parse HEAD)"
+  printf 'project-commit=%s\n' "$(git -c safe.directory="$project" -C "$project" rev-parse HEAD)"
   printf 'pve-commit=%s\n' "$(git -C "$pve" rev-parse HEAD)"
   git -C "$pve" submodule status --recursive
   gcc-14 --version
@@ -35,4 +35,5 @@ for package in "$project"/artifacts/*.deb; do
 done
 date -u '+build-end=%Y-%m-%dT%H:%M:%SZ' >> "$project/artifacts/build-info.txt"
 (cd "$project/artifacts" && sha256sum *.deb > SHA256SUMS)
+bash "$project/scripts/test-packages.sh" "$build_root"
 

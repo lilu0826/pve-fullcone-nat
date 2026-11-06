@@ -67,7 +67,8 @@ def rules(expression='masquerade', forward_drop=False):
 
 
 def setup():
-    if not Path('/run/fullcone-test-vm').exists() or 'fullcone-test' not in run('uname', '-r').stdout:
+    release = run('uname', '-r').stdout.strip()
+    if not Path('/run/fullcone-test-vm').exists() or not ('fullcone-test' in release or release == '7.0.14-23-fullcone-pve'):
         raise SystemExit('Run only in the provided disposable QEMU test VM')
     for ns in ('r', 'h1', 'h2', 'a', 'b'):
         run('ip', 'netns', 'add', ns)
@@ -136,6 +137,15 @@ def tcp_case():
         assert 'ESTABLISHED' in state and '[ASSURED]' in state, state
     else:
         blocked('b', 'tcp_probe', port=6200, destination=first['observed'])
+    rpc('h1', 'tcp_close_all')
+    rpc('b', 'tcp_close_all')
+    end = time.monotonic() + 2
+    while time.monotonic() < end:
+        state = run('conntrack', '-L', '-p', 'tcp', ns='r').stdout
+        if 'ESTABLISHED' not in state:
+            break
+        time.sleep(.05)
+    assert 'ESTABLISHED' not in state, state
 
 
 def firewall_case():
@@ -231,6 +241,17 @@ def lifecycle_case():
     time.sleep(.5)
     rpc('b', 'udp_open', port=6801)
     blocked('b', 'udp_probe', port=6801, destination=endpoint)
+    rpc('h1', 'udp_open', port=5801)
+    old = rpc('h1', 'udp_probe', port=5801, destination=['198.18.0.2', 9000])['observed']
+    run('ip', 'addr', 'del', '198.18.0.1/24', 'dev', 'wan', ns='r')
+    run('ip', 'addr', 'add', '198.18.0.10/24', 'dev', 'wan', ns='r')
+    time.sleep(.5)
+    state = run('conntrack', '-L', '-p', 'udp', ns='r').stdout
+    assert f'dst=198.18.0.1 sport=9000 dport={old[1]}' not in state, state
+    new = rpc('h1', 'udp_probe', port=5801, destination=['198.18.0.2', 9000])['observed']
+    assert new[0] == '198.18.0.10', new
+    run('ip', 'addr', 'del', '198.18.0.10/24', 'dev', 'wan', ns='r')
+    run('ip', 'addr', 'add', '198.18.0.1/24', 'dev', 'wan', ns='r')
 
 
 def ipv6_case():
@@ -248,12 +269,41 @@ def ipv6_case():
     blocked('b','udp_probe',port=6900,destination=endpoint)
 
 
+def low_port_case():
+    rules()
+    rpc('h1', 'udp_open', port=500)
+    endpoint = rpc('h1', 'udp_probe', port=500, destination=['198.18.0.2', 9000])['observed']
+    if ENABLED:
+        assert 1024 <= endpoint[1] <= 65535, endpoint
+    else:
+        assert endpoint[1] == 500, endpoint
+
+
+def zone_case():
+    rules()
+    run('nft', '-f', '-', ns='r', stdin='''table ip raw {
+      chain pre { type filter hook prerouting priority raw;
+        iifname "lan1" ct zone set 42
+        iifname "wan" udp sport 9000 ct zone set 42
+      }
+    }\n''')
+    rpc('h1', 'udp_open', port=5950)
+    endpoint = rpc('h1', 'udp_probe', port=5950, destination=['198.18.0.2', 9000])['observed']
+    rpc('b', 'udp_open', port=6950)
+    blocked('b', 'udp_probe', port=6950, destination=endpoint)
+    run('nft', 'add', 'rule', 'ip', 'raw', 'pre', 'iifname', 'wan', 'udp', 'sport', '6951', 'ct', 'zone', 'set', '42', ns='r')
+    rpc('b', 'udp_open', port=6951)
+    # The return packet must select the same zone as the inbound new flow.
+    reply = rpc('b', 'udp_probe', port=6951, destination=endpoint)
+    assert reply['responder'] == endpoint, reply
+
+
 def main():
     try:
         setup()
-        cases = [('udp', udp_case), ('udp-fully-random', lambda: udp_case(True)), ('tcp-handshake-and-data', tcp_case), ('forward-drop', firewall_case), ('explicit-snat-isolation', snat_case), ('explicit-dnat-precedence', dnat_case), ('local-service-precedence', local_service_case), ('ipv6-unchanged', ipv6_case)]
+        cases = [('udp', udp_case), ('udp-fully-random', lambda: udp_case(True)), ('tcp-handshake-and-data', tcp_case), ('forward-drop', firewall_case), ('explicit-snat-isolation', snat_case), ('explicit-dnat-precedence', dnat_case), ('low-source-port', low_port_case), ('local-service-precedence', local_service_case), ('ipv6-unchanged', ipv6_case)]
         if ENABLED:
-            cases += [('concurrent-eim-and-uniqueness', concurrency_case), ('port-exhaustion', exhaustion_case), ('flush-and-wan-down', lifecycle_case)]
+            cases += [('concurrent-eim-and-uniqueness', concurrency_case), ('port-exhaustion', exhaustion_case), ('flush-and-wan-down', lifecycle_case), ('conntrack-zone-isolation', zone_case)]
         for name, case in cases:
             try:
                 case()

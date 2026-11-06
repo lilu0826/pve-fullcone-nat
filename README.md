@@ -15,6 +15,7 @@
 - [只读宿主机信息采集脚本](scripts/collect-host-info.sh)
 - [本地参考材料校验脚本](scripts/verify-references.py)
 - [实现设计、映射寿命与冲突优先级](docs/design.md)
+- [并存安装与回滚](docs/install-and-rollback.md)
 - [GitHub Actions](https://github.com/lilu0826/pve-fullcone-nat/actions/workflows/kernel.yml)
 
 补丁顺序：`0001-sonic-984.patch` → `0002-sonic-987.patch` → `0003-pve-native-fullcone.patch`。前两份是锁定参考补丁在目标 PVE 源码上的重排，第三份负责仅 IPv4 MASQUERADE 自动启用及入站路径。没有 985/986，没有用户态 NAT 修改。补丁输入、结果和文件 SHA-256 见 `patches/manifest.json`。

@@ -112,6 +112,16 @@ class Peer:
             sock.close()
             raise
 
+    def tcp_close_all(self):
+        for sock in self.connections:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+        self.connections.clear()
+        return True
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -125,7 +135,7 @@ def main():
             try:
                 request = json.loads(self.rfile.readline())
                 method = request.pop('method')
-                if method not in ('udp_open', 'udp_probe', 'tcp_listen', 'tcp_probe'):
+                if method not in ('udp_open', 'udp_probe', 'tcp_listen', 'tcp_probe', 'tcp_close_all'):
                     raise ValueError('Unknown test method')
                 value = getattr(peer, method)(**request)
                 result = {'ok': True, 'value': value}

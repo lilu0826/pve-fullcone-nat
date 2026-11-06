@@ -12,7 +12,12 @@ case " $(cat /proc/cmdline) " in
   *' fullcone_mode=enabled '*) mode=enabled ;;
 esac
 uname -a
-zcat /proc/config.gz | grep -E 'NF_NAT_FULLCONE|PROVE_LOCKING|MODVERSIONS'
+if [ -r /proc/config.gz ]; then
+  zcat /proc/config.gz | grep -E 'NF_NAT_FULLCONE|PROVE_LOCKING|MODVERSIONS'
+else
+  grep -E 'NF_NAT_FULLCONE|PROVE_LOCKING|MODVERSIONS' "/boot/config-$(uname -r)"
+fi
+modinfo -F vermagic nf_nat 2>/dev/null || true
 python3 /opt/fullcone/network.py "$mode"
 status=$?
 echo '=== FINAL KERNEL LOG ==='
