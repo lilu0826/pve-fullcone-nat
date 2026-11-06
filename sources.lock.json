@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "target_release": "7.0.14-23-pve",
-  "status": "implementation_ci_pending",
+  "validation_report": "docs/validation-status.md",
   "pve": {
     "repository": "https://git.proxmox.com/git/pve-kernel.git",
     "commit": "c1ca7892dbc5087d01c12ad260bbe03e77c1a296",

@@ -196,6 +196,67 @@ def local_service_case():
     assert inbound and 'src=198.18.0.1 dst=198.18.0.3 sport=5600' in inbound[0], state
 
 
+def redirect_case():
+    rules()
+    rpc('h1', 'udp_open', port=5510)
+    endpoint = rpc('h1', 'udp_probe', port=5510, destination=['198.18.0.2', 9000])['observed']
+    rpc('r', 'udp_open', port=5511)
+    run('nft', '-f', '-', ns='r', stdin=f'''add chain ip nat pre {{ type nat hook prerouting priority dstnat; }}
+add rule ip nat pre iifname "wan" udp dport {endpoint[1]} redirect to :5511
+''')
+    rpc('b', 'udp_open', port=6510)
+    reply = rpc('b', 'udp_probe', port=6510, destination=endpoint)
+    assert reply['responder'] == endpoint, reply
+    state = run('conntrack', '-L', '-p', 'udp', ns='r').stdout
+    assert 'src=198.18.0.1 dst=198.18.0.3 sport=5511 dport=6510' in state, state
+
+
+def protocol_isolation_case():
+    rules('masquerade to :5520')
+    rpc('h1', 'udp_open', port=5521)
+    endpoint = rpc('h1', 'udp_probe', port=5521, destination=['198.18.0.2', 9000])['observed']
+    rpc('h1', 'tcp_listen', port=5521)
+    blocked('b', 'tcp_probe', port=6520, destination=endpoint)
+    # Non-port ICMP retains ordinary outbound masquerading.
+    run('ping', '-c', '1', '-W', '2', '198.18.0.2', ns='h1')
+
+
+def snat_collision_case():
+    rules('masquerade to :5530')
+    rpc('h1', 'udp_open', port=5531)
+    endpoint = rpc('h1', 'udp_probe', port=5531, destination=['198.18.0.2', 9000])['observed']
+    # Preserve ordinary SNAT's legal sharing of a public endpoint across destinations.
+    run('nft', 'insert', 'rule', 'ip', 'nat', 'post', 'ip', 'saddr', '10.0.2.2',
+        'snat', 'to', '198.18.0.1:5530', ns='r')
+    rpc('h2', 'udp_open', port=5532)
+    other = rpc('h2', 'udp_probe', port=5532, destination=['198.18.0.3', 9001])['observed']
+    assert other == endpoint, (endpoint, other)
+    rpc('b', 'udp_open', port=6530)
+    blocked('b', 'udp_probe', port=6530, destination=endpoint)
+
+
+def expiry_case():
+    rules()
+    run('sysctl', '-qw', 'net.netfilter.nf_conntrack_udp_timeout=2', ns='r')
+    run('sysctl', '-qw', 'net.netfilter.nf_conntrack_udp_timeout_stream=2', ns='r')
+    try:
+        rpc('h1', 'udp_open', port=5540)
+        endpoint = rpc('h1', 'udp_probe', port=5540, destination=['198.18.0.2', 9000])['observed']
+        time.sleep(3)
+        rpc('b', 'udp_open', port=6540)
+        blocked('b', 'udp_probe', port=6540, destination=endpoint)
+        state = run('conntrack', '-L', '-p', 'udp', ns='r').stdout
+        assert 'src=10.0.1.2 dst=198.18.0.2 sport=5540' not in state, state
+        # Explicit deletion must also revoke the automatic mapping.
+        rpc('h1', 'udp_probe', port=5540, destination=['198.18.0.2', 9000])
+        run('conntrack', '-D', '-p', 'udp', '--orig-src', '10.0.1.2', '--sport', '5540', ns='r')
+        rpc('b', 'udp_open', port=6541)
+        blocked('b', 'udp_probe', port=6541, destination=endpoint)
+    finally:
+        run('sysctl', '-qw', 'net.netfilter.nf_conntrack_udp_timeout=30', ns='r')
+        run('sysctl', '-qw', 'net.netfilter.nf_conntrack_udp_timeout_stream=120', ns='r')
+
+
 def concurrency_case():
     rules('masquerade fully-random')
     endpoints = [(ns, port) for ns in ('h1', 'h2') for port in range(10000, 10024)]
@@ -302,6 +363,7 @@ def main():
     try:
         setup()
         cases = [('udp', udp_case), ('udp-fully-random', lambda: udp_case(True)), ('tcp-handshake-and-data', tcp_case), ('forward-drop', firewall_case), ('explicit-snat-isolation', snat_case), ('explicit-dnat-precedence', dnat_case), ('low-source-port', low_port_case), ('local-service-precedence', local_service_case), ('ipv6-unchanged', ipv6_case)]
+        cases += [('redirect-precedence', redirect_case), ('protocol-isolation-and-icmp', protocol_isolation_case), ('ordinary-snat-collision', snat_collision_case), ('expiry-and-explicit-delete', expiry_case)]
         if ENABLED:
             cases += [('concurrent-eim-and-uniqueness', concurrency_case), ('port-exhaustion', exhaustion_case), ('flush-and-wan-down', lifecycle_case), ('conntrack-zone-isolation', zone_case)]
         for name, case in cases:

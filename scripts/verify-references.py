@@ -51,10 +51,10 @@ def main():
     print(json.dumps({
         'reference_integrity': 'pass',
         'checks': checks,
-        'project_kernel_patch': 'not_created',
+        'project_kernel_patch': 'see patches/manifest.json',
         'reference_patch_probe': 'see docs/research-checks.log',
-        'kernel_build': 'not_run',
-        'fullcone_functional_tests': 'not_run',
+        'kernel_build': 'not assessed by this reference-only check; see docs/validation-status.md',
+        'fullcone_functional_tests': 'not assessed by this reference-only check; see docs/validation-status.md',
     }, indent=2, ensure_ascii=False))
 
 
