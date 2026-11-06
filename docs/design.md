@@ -5,7 +5,7 @@
 ## 范围与调用路径
 
 - 默认开启 `CONFIG_NF_NAT_FULLCONE_MASQUERADE`，可编译关闭。
-- 只在 `nf_nat_masquerade_ipv4()` 对 TCP/UDP 设置私有内核标志。UAPI 的 NAT flag mask 不增加 Full Cone 位；既有 nft/iptables 工具和规则不变。
+- 只在 `nf_nat_masquerade_ipv4()` 对 TCP/UDP 设置私有内核标志和接口字段。UAPI 的 NAT flag mask 不增加 Full Cone 位；setup 还检查内部接口字段、地址族、协议和 zone。旧 xtables 路径即使传入未知标志位也不能单凭该位启用扩展；既有 nft/iptables 工具和规则不变。
 - 不带端口范围时在 helper 内部使用 1024–65535；明确提供的范围仍受尊重。低源端口因此可能被转换到高端口。
 - 普通显式 SNAT、DNAT、REDIRECT、IPv6 和非 TCP/UDP 不启用 Full Cone。方向不对称的 conntrack zone 保持原 MASQUERADE 行为，本版只对双向一致的 zone 启用扩展。
 
@@ -41,4 +41,4 @@
 
 release 使用 PVE 的 `KREL_EXTRA=-fullcone`，得到 `7.0.14-23-fullcone-pve`；包版本为 `7.0.14-23+fullcone1`。完整构建包含 ZFS、内核模块和 headers，并保留原有 ABI 检查输出。新的 release 允许与 `7.0.14-23-pve` 并存，不应混装两套模块。
 
-CI 的外部 A/B 是测试 VM 中独立网络命名空间和 IP，不是公网实机。TCP 测试真正执行 connect/accept、三次握手和 32768 字节双向传输；UDP 测试实际核对公网端点和新来源回包。独立公网设备、PVE 实机启动、长时间负载、KASAN/KCSAN 仍不能靠 CI 短测声称通过。
+CI 的外部 A/B/C 是测试 VM 中独立网络命名空间和 IP，不是公网实机。先访问 A/B 检查 EIM，再由未联系过的 C 检查 EIF。TCP 测试真正执行 connect/accept、三次握手和 32768 字节双向传输；UDP 测试实际核对公网端点和新来源回包。独立公网设备、PVE 实机启动、长时间负载、KASAN/KCSAN 仍不能靠 CI 短测声称通过。

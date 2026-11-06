@@ -1,44 +1,41 @@
 # 验证记录
 
-> 后续进展：已实现三段式补丁和 CI，正在启动 GitHub Actions。下表保留首轮研究时的记录，尚不能视为当前代码的最终验收结果；新运行结果将在本文件更新。
+日期：2026-11-06。当前代码已提交，正在执行 [Actions 42206745835](https://github.com/lilu0826/pve-fullcone-nat/actions/runs/42206745835)。本报告尚未给出安装包通过结论。
 
-日期：2026-11-06。当前不是功能验收报告的“通过”版本。
+## 源码和实现检查
 
-| 检查 | 结果 | 证据/限制 |
+| 检查 | 结果 | 证据/范围 |
 | --- | --- | --- |
-| 目标宿主机版本 | 已核对用户输出 | 见 host-baseline.md |
-| 官方 PVE 提交 | 已验证 | 官方仓库存在目标提交，Makefile/changelog 匹配 |
-| 内核和 ZFS gitlink | 已验证 | 固定 PVE 提交的 `git ls-tree` |
-| 984 / 987 来源 | 已固定 | 本地 clone 的 HEAD + Git blob SHA + SHA-256 |
-| SONiC 原始补丁 | 已读取并固定 | GitHub 文件工具，固定提交 |
-| 目标内核源码 | 已获取固定提交、稀疏检出 | 已读取 NAT 相关文件，未审阅整个内核 |
-| PVE 全量补丁应用 | 未执行 | 已对七个检查文件筛选全量 patch 并应用相关 header 修改；不是完整构建树 |
-| 984 文本应用检查 | 范围内通过 | GNU patch dry-run / fuzz=0；有行号 offset，随后仅在一次性检查目录应用 |
-| 987 文本应用检查 | 范围内通过 | 在检查目录的 984 基础上 dry-run / fuzz=0；未正式移植 |
-| 映射范围静态分析 | 发现阻断 | 普通 SNAT 也被索引且可被原 EIF 查找命中 |
-| fully-random EIM 分析 | 发现阻断 | 复用路径受 RANDOM_ALL 条件排除 |
-| 并发/UAF/锁验证 | 未执行运行验证 | 仅审阅参考补丁，不等同于 KASAN/lockdep 通过 |
-| 编译、Debian 打包 | 未执行 | 阶段停止；没有 Linux 构建环境或 Actions 构建日志 |
-| UDP EIM/EIF | 未执行 | 没有测试内核 |
-| TCP 三次握手/双向数据 | 未执行 | 没有测试内核和独立外网测试机 |
-| FORWARD/SNAT/DNAT/IPv6 回归 | 未执行 | 不以原系统正常代表补丁通过 |
-| 安装、重启、回滚 | 未执行 | 未连接或改动 PVE 主机 |
+| 宿主机版本 | 已核对用户输出 | `com`：PVE 9.2、`7.0.14-23-pve`、`CONFIG_MODVERSIONS=y`；见 [host-baseline.md](host-baseline.md) |
+| 官方 PVE 打包版本 | 已固定 | `c1ca7892dbc5087d01c12ad260bbe03e77c1a296` |
+| 内核子模块 | 已固定 | `874594fa24531e1ea15fa72709d20047e4a8d77c` |
+| ZFS 子模块 | 已固定 | `dcd0e4345f4253bb9e44cc1ab54c6f73196421aa` |
+| 984、987 参考补丁 | 已固定并移植 | 原文件和 Git blob 摘要见 `sources.lock.json`，交付补丁见 `patches/manifest.json` |
+| 本地补丁链 | 通过 | 对固定 PVE 基线文件逐一验证 SHA-256，GNU patch 零 fuzz 应用，再核对结果摘要；不代表内核编译 |
+| 修改范围和生命周期 | 已进行代码审阅 | 见 [design.md](design.md)；不把代码审阅等同于并发稳定性证明 |
 
-## 后续必须实际执行的验收
+三段式补丁不包含 985/986。仅 IPv4 TCP/UDP MASQUERADE 设置内核私有资格位；入站自动查找发生在所有显式 NAT lookup 之后，仍走标准 conntrack、NAT 和 FORWARD。没有用户态程序修改，也没有额外 PREROUTING Full Cone 规则。
 
-1. 在隔离的测试 VM 启动独立 release 的完整内核，记录 uname、配置、模块 vermagic、包文件校验和串口日志。Kconfig 开、关分别编译。
-2. 用固定内部 UDP socket 向不同地址/端口发包，由外部端记录实际公网端点；由未参与此前通信的第三端发数据，内部验证内容。STUN 只能作为辅助。
-3. TCP 测试程序需有同端口监听和出站连接能力。维持到外部 A 的出站连接，由不同地址/源端口的 B 主动连接映射；抓取 SYN、SYN-ACK、ACK，双向交换随机内容并逐字节校验，记录 FIN/RST 和 conntrack 清理。
-4. 只设置原始 POSTROUTING masquerade、没有用户态 PREROUTING NAT 链时完成上述测试；同时验证多条、不同优先级 NAT 基础链、显式 DNAT、REDIRECT 和无 NAT 路径。
-5. FORWARD DROP 必须使第三方入站失败；ACCEPT 对照才应通过。不伪造 ESTABLISHED，不从失败测试中删除防火墙来冒充兼容。
-6. 多内部主机同源端口、同内部端点跨 CPU 创建、端口池耗尽、fully-random、低端口、显式范围及与普通 SNAT/本机监听端口冲突均单独测试。
-7. conntrack 超时/删除/flush、首包未确认即失败、接口地址变化、WAN down/up、netns 和模块卸载必须在并发流量下测试；收集 KASAN、KCSAN、lockdep 等适用的诊断输出。
-8. 比较显式 SNAT/DNAT、IPv6、非 TCP/UDP，以及 OpenWrt 容器/其他 VM 的基线行为。所有未执行项目保留“未验证”，不以脚本存在或编译成功替代。
+## CI 证据规则
 
-## 构建与安装交付限制
+运行必须同时满足：补丁校验成功、编译成功、QEMU 启动成功、全部测试通过标记存在、内核日志没有检查范围内的 BUG/WARNING/lockdep/panic，才能记为通过。完整包作业还必须生成真实 Debian 包，并使用包内的 vmlinuz、模块和新生成的 initramfs 再启动复测。
 
-本地为 Windows。稀疏检出 netfilter 时，`xt_DSCP` / `xt_dscp` 等仅大小写不同的 Linux 文件在 Windows 文件系统发生路径碰撞，导致这部分工作树与 Git 对象不一致。研究所用的七个锁定文件无此冲突，检查目录的源码也通过 `git show <固定提交>:<路径>` 从 Git 对象读取。完整构建必须在 Linux 文件系统重新检出；不能直接把这个 Windows 工作树打包当作完整内核源码。参考材料校验脚本仅校验清单列出的文件，明确不代表全树校验。
+早期运行 `42202195204` 的 network-tests 曾被 Actions 显示为成功，但下载日志发现实际编译失败，外层 `tee` 管道未传播失败退出码。**该运行不能证明任何功能通过。** 已在 `65616db` 中修复编译错误，并为工作流显式设置 `bash` 和 `set -euo pipefail`。取消、失败和误报成功运行的工件均只作诊断，不能安装。
 
-本次没有生成 `.deb`、`build.log` 或 GitHub Actions 构建运行。[research-checks.log](research-checks.log) 是参考补丁文本检查的真实输出，不是编译日志。未创建占位的“成功”构建工作流。未来只有完整补丁检查和设计门槛通过后，才启动完整 PVE 打包并上传真实产物和失败日志。
+运行 `42204353520` 已真实完成启用配置的编译和启动，前七项功能用例通过，随后因有端口范围的测试规则缺少传输协议上下文而失败，未执行完整打包。后续已修正测试规则。`check-kernel-log.py` 只豁免完整匹配的 SRSO 虚拟 CPU/宿主机缓解提示，并在日志中记录；其他 WARNING、BUG、lockdep、KASAN 或 panic 仍判失败。日志检查器的五项正反例已在本地通过。
 
-未来安装必须保留 `7.0.14-23-pve`，确认 GRUB/systemd-boot、Secure Boot、ZFS 和 DKMS 情况，再用真实包名制定并存安装和一次性试启动流程。当前没有安全可执行的本项目内核安装步骤。
+## 测试设计及边界
+
+精简测试内核与完整安装包使用同一套固定 PVE 源码和补丁。精简配置分别编译 Full Cone 开/关并启用 lockdep；完整包保留 PVE 配置。测试 VM 使用路由器、两个内网设备和三个外网设备的独立 network namespace。内网先访问 A/B 验证 EIM，再由从未联系过的 C 发起新入站验证 EIF，避免把地址受限过滤误判为 Full Cone。没有连接或修改 PVE 节点。
+
+测试覆盖 UDP EIM/EIF、fully-random、TCP 实际 connect/accept 和 32768 字节双向校验、TCP 关闭、FORWARD DROP、显式 SNAT/DNAT/REDIRECT、本机 socket 优先、低源端口、IPv6、协议隔离、ICMP、普通 SNAT 公网端点冲突、conntrack 超时/删除/flush、并发映射与端口唯一性、端口耗尽、WAN down/up 和地址变化、conntrack zone 隔离。脚本存在不代表这些测试已经通过；最终结果须由对应运行日志填写。
+
+以下项目仍需要实际环境，不能用 CI 替代：
+
+- PVE `com` 实机启动、引导器、Secure Boot、自有 DKMS、ZFS 存储读写，以及 OpenWrt/LXC/VM 网络回归。
+- 独立公网设备和真实链路上的 UDP/STUN、TCP 主动连接验收；CI 的“外网”是隔离测试拓扑。
+- 长时间高负载、KASAN/KCSAN、内存泄漏检测，以及并发流量下的模块卸载和命名空间反复销毁。
+
+本地 Windows 稀疏检出存在 Linux 大小写路径碰撞，因此本地只从固定 Git 对象读取并验证清单文件。CI 在 Linux 文件系统重新获取源码、应用完整 PVE 补丁并编译；没有把 Windows 工作树当作完整构建树。
+
+安装与回滚见 [install-and-rollback.md](install-and-rollback.md)。只有对应完整工作流和实际包启动测试通过后才能选用其产物；独立 release `7.0.14-23-fullcone-pve` 用于与原内核并存。
