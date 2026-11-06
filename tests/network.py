@@ -18,7 +18,11 @@ ENABLED = sys.argv[1] == 'enabled'
 
 def run(*args, ns=None, stdin=None, check=True):
     command = (['ip', 'netns', 'exec', ns] if ns else []) + list(args)
-    return subprocess.run(command, input=stdin, text=True, capture_output=True, check=check)
+    result = subprocess.run(command, input=stdin, text=True, capture_output=True)
+    if check and result.returncode:
+        print(f'COMMAND_FAILED={command!r}\n{result.stdout}\n{result.stderr}', flush=True)
+        result.check_returncode()
+    return result
 
 
 def rpc(ns, method, **args):
@@ -53,6 +57,10 @@ def link(namespace, interface, peer_ns, peer_interface, address, peer_address):
 def rules(expression='masquerade', forward_drop=False):
     run('nft', 'flush', 'ruleset', ns='r')
     run('conntrack', '-F', ns='r')
+    # nft requires transport context when an explicit port range is given.
+    # These bounded-pool cases exercise UDP; the default rule remains unqualified.
+    if expression.startswith('masquerade to :'):
+        expression = 'meta l4proto udp ' + expression
     text = f'''table ip nat {{
       chain post {{ type nat hook postrouting priority srcnat; oifname "wan" {expression}; }}
     }}\n'''
@@ -220,6 +228,7 @@ def protocol_isolation_case():
     rpc('h1', 'tcp_listen', port=5521)
     blocked('b', 'tcp_probe', port=6520, destination=endpoint)
     # Non-port ICMP retains ordinary outbound masquerading.
+    run('nft', 'add', 'rule', 'ip', 'nat', 'post', 'oifname', 'wan', 'masquerade', ns='r')
     run('ping', '-c', '1', '-W', '2', '198.18.0.2', ns='h1')
 
 
@@ -229,7 +238,7 @@ def snat_collision_case():
     endpoint = rpc('h1', 'udp_probe', port=5531, destination=['198.18.0.2', 9000])['observed']
     # Preserve ordinary SNAT's legal sharing of a public endpoint across destinations.
     run('nft', 'insert', 'rule', 'ip', 'nat', 'post', 'ip', 'saddr', '10.0.2.2',
-        'snat', 'to', '198.18.0.1:5530', ns='r')
+        'meta', 'l4proto', 'udp', 'snat', 'to', '198.18.0.1:5530', ns='r')
     rpc('h2', 'udp_open', port=5532)
     other = rpc('h2', 'udp_probe', port=5532, destination=['198.18.0.3', 9001])['observed']
     assert other == endpoint, (endpoint, other)

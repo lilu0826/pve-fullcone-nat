@@ -38,9 +38,5 @@ timeout 600 qemu-system-x86_64 "${acceleration[@]}" -m 3072 -smp 4 \
   -drive "file=$build_root/package-root.img,format=raw,if=virtio,snapshot=on" \
   -append 'root=/dev/vda rw console=ttyS0 init=/opt/fullcone/init.sh fullcone_mode=enabled panic=-1 oops=panic' \
   2>&1 | tee "$project/artifacts/qemu-package.log"
-grep -q 'FULLCONE_TEST_PASS enabled' "$project/artifacts/qemu-package.log"
-if grep -E 'BUG:|WARNING:|possible circular locking|KASAN:|kernel panic|Kernel panic' "$project/artifacts/qemu-package.log"; then
-  echo 'Kernel diagnostic failure' >&2
-  exit 1
-fi
+python3 "$project/scripts/check-kernel-log.py" "$project/artifacts/qemu-package.log" enabled
 

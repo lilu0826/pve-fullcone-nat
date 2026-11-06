@@ -63,9 +63,5 @@ for mode in enabled disabled; do
     -drive "file=$build_root/root.img,format=raw,if=virtio,snapshot=on" \
     -append "root=/dev/vda rw console=ttyS0 init=/opt/fullcone/init.sh fullcone_mode=$mode panic=-1 oops=panic" \
     2>&1 | tee "$project/artifacts/qemu-$mode.log"
-  grep -q "FULLCONE_TEST_PASS $mode" "$project/artifacts/qemu-$mode.log"
-  if grep -E 'BUG:|WARNING:|possible circular locking|KASAN:|kernel panic|Kernel panic' "$project/artifacts/qemu-$mode.log"; then
-    echo 'Kernel diagnostic failure' >&2
-    exit 1
-  fi
+  python3 "$project/scripts/check-kernel-log.py" "$project/artifacts/qemu-$mode.log" "$mode"
 done
