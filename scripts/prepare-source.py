@@ -37,7 +37,7 @@ def prepare(destination):
     original = changelog.read_text()
     changelog.write_text('proxmox-kernel-7.0 (7.0.14-23+fullcone1) trixie; urgency=medium\n\n'
                          '  * Native IPv4 MASQUERADE Full Cone NAT, experimental validation build.\n\n'
-                         ' -- PVE Fullcone Build <build@localhost>  Fri, 06 Nov 2026 00:00:00 +0000\n\n' + original)
+                         ' -- PVE Fullcone Build <lilu0826@users.noreply.github.com>  Fri, 06 Nov 2026 00:00:00 +0000\n\n' + original)
     run('make', 'KREL_EXTRA=-fullcone', 'PKG_REV_EXTRA=+fullcone1', 'build-dir-fresh', cwd=destination)
     kernel = destination / 'proxmox-kernel-7.0.14/ubuntu-kernel'
     run('python3', ROOT / 'scripts/apply-patches.py', kernel)
